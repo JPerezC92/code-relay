@@ -1,0 +1,14 @@
+# CodeRelay adoption reconciliation review (schema v2).
+#
+# Committed alongside `.aicore/adoption.yaml`. `propose-lock` binds this file's
+# raw digest into the lock as `review_digest`, so a changed review invalidates
+# the lock. A decision is required for every non-mirror unit (`adapted`,
+# `replacement`, `destination_owned`) whose upstream digest changed between the
+# accepted baseline and the target revision. `mirror` and `not_applicable`
+# units need no decision.
+#
+# This is the initial enrollment at the accepted revision, so no non-mirror
+# upstream delta exists yet and there are no decisions to record.
+schema_version: 2
+upstream_repository: JPerezC92/ai-core
+decisions: []
