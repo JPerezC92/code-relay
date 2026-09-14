@@ -81,7 +81,7 @@ Every refutation, either kind, carries literal command output in the round summa
 | Herald 📯 (Release Manager) | Release Manager | Dev |
 | Inquisitor 🔎 (PR Reviewer) | PR Reviewer | Dev |
 | Lumen ✨ (Visual Director) | Visual Director | Dev |
-| Sentinel 🛡️ (Quality Guardian) | Quality Guardian | Cross-cutting |
+| Sentinel 🛡️ (Quality Guardian) | Quality Guardian | Dev |
 | Warden 🔒 (Dependency Warden) | Dependency Warden | Dev |
 
 Edge cases:

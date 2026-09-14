@@ -1,10 +1,10 @@
 schema_version: 2
 upstream_repository: JPerezC92/ai-core
-accepted_source_commit: f6d02d7535d0795365b478f3bfc3fa3ef2b02a34
-accepted_catalog_digest: sha256:469e6d4d54faf1129088bd041cc2bd365abf4cf27d67f67c488f956f6a647c3e
+accepted_source_commit: ba2e89182bf1c95b36c09effdb6ef6d7088e8d6f
+accepted_catalog_digest: sha256:515e1f45c24bdf370b3ab6c9bc09a788ee8ac58b1eb4417e65ea866c3886f62c
 declaration_digest: sha256:52a0bddc5440b48ec7d20ca23968b11161afb221ade0bdc7cba017e9c7d0c4fa
-review_digest: sha256:ccee9b554e5ec590d0491a829c48c14d01ac80b32bc48a1c2b7a4cffca5989d3
-accepted_snapshot_digest: sha256:08edc95d37190811eeade2c45f7d35fbd478677f937719f3e551caf9aa57a245
+review_digest: sha256:b2521d6d28414defd89a60aa654ad2632b4ffba33a7029caf72b00b4dc7c9751
+accepted_snapshot_digest: sha256:5d81712bd0e92eafedfba1f2379faf12f1ace5879dde1f9adefbe0e45b827bef
 units:
 - id: git-branch-name
   mode: mirror
@@ -27,12 +27,12 @@ units:
 - id: git-pr
   mode: mirror
   declaration_unit_digest: sha256:2e192d3a630b5117cd1143b531c4b94fe645f59a53c2a685485ff3d58e177966
-  accepted_upstream_digest: sha256:1137539306a48c35ba301d89bdc072c8a1308ba3c817ea76eb65b7c00a9eff7b
+  accepted_upstream_digest: sha256:193db39dcf53d2949c0a358ca219fe54c41757e3bc593fc1c8a0916900007377
   members:
   - id: tree
     destination: .opencode/skills/git-pr
-    accepted_upstream_digest: sha256:2a870dc388488a83de48e7c5be84405c70d8aba24571ae5b6f2aae04f6f978a6
-    accepted_destination_digest: sha256:2a870dc388488a83de48e7c5be84405c70d8aba24571ae5b6f2aae04f6f978a6
+    accepted_upstream_digest: sha256:d782c726e8dcdc5382c141498a84e3d38f6e87c1837b0e49a8cad1e96c068c4e
+    accepted_destination_digest: sha256:d782c726e8dcdc5382c141498a84e3d38f6e87c1837b0e49a8cad1e96c068c4e
 - id: op-agent-creator
   mode: mirror
   declaration_unit_digest: sha256:3bcd362cea7a4b44060824eeb0c3256172b3857bb3a8ea780d12c1db8e90b012
@@ -45,12 +45,12 @@ units:
 - id: op-model
   mode: mirror
   declaration_unit_digest: sha256:38ccde8592edce6dfc2bb6e509f954f7be7f5d3c77e917cbcac6f03296b77ab5
-  accepted_upstream_digest: sha256:f5b2e885dc44d26640ae987fdfffaf10b60962cff9c9df0ec77128347d8afd95
+  accepted_upstream_digest: sha256:2149f594c8631f1bb4a7b802cf47a07dc1cf56a287dea52d125aada3cefd8a4c
   members:
   - id: tree
     destination: .opencode/skills/op-model
-    accepted_upstream_digest: sha256:f887b0bee2b9f688abe6601ec95680f2e8e5b880dfaa08611f8a37fbe60fbc68
-    accepted_destination_digest: sha256:f887b0bee2b9f688abe6601ec95680f2e8e5b880dfaa08611f8a37fbe60fbc68
+    accepted_upstream_digest: sha256:26e0ead49cac76495a5e89b312ac7f423259d96511638ea502edf8085f5c836c
+    accepted_destination_digest: sha256:26e0ead49cac76495a5e89b312ac7f423259d96511638ea502edf8085f5c836c
 - id: op-skill-creator
   mode: mirror
   declaration_unit_digest: sha256:7f1a5d109dba7ee2c210ef5afacc4f44bd329ec757ea2ee1a810fd31e9e7493a
@@ -201,12 +201,12 @@ units:
 - id: sentinel
   mode: adapted
   declaration_unit_digest: sha256:860bb01a8645122b877ecfa5d673596cab02477ad8990e56ce66304b1027cad7
-  accepted_upstream_digest: sha256:c41c48fb467a5469119eb3b4bbaecd30518f1dcb54fbcfb2aa13b12d31097d35
+  accepted_upstream_digest: sha256:d41492003a8017b7f3a7144c217a89062542099514c79e6620255a7fe54b61d9
   members:
   - id: spec
     destination: .opencode/agents/sentinel.md
-    accepted_upstream_digest: sha256:51c10cb30205838af1bbc75a9161e06ff4eb18da09a61a7efd87cd895bc3cf4f
-    accepted_destination_digest: sha256:bb91d6dc8e3b70f30f6a2b162ace1c465fbfcd470c2b69b6cb5e3261ceecb137
+    accepted_upstream_digest: sha256:a069f8dc3098652507887969d65ab159cbc868e9a895005edfc84eb1576b8a1c
+    accepted_destination_digest: sha256:da1f30a94b7c6aa45b4adec9080df1934872ff8011c2593d33302df57ce7e3ac
   - id: profile
     destination: agents/sentinel/profile.md
     accepted_upstream_digest: sha256:7b8ae042d71e8d3a273cee70f553ca07cc31ef968ad69d472b459e23c5262d89
@@ -227,12 +227,12 @@ units:
 - id: warden
   mode: mirror
   declaration_unit_digest: sha256:ce05c2fd6f2f0e8f6f497a2309e85bdaadd48a3e324a6d470c38992c9bbe4f94
-  accepted_upstream_digest: sha256:9ee7d52e3f167f453e9624cecab4ffe43dc6aa3952a251665c522c445f17a4b7
+  accepted_upstream_digest: sha256:a101778a6c6ef62aa8cd4866561dd6170f4c1d28e9ce4f18866a620f1e8705c5
   members:
   - id: spec
     destination: .opencode/agents/warden.md
-    accepted_upstream_digest: sha256:8308e37d6dd2941f2968eb90a2df22d630b4800af25ea91ea66bd29464d958d9
-    accepted_destination_digest: sha256:8308e37d6dd2941f2968eb90a2df22d630b4800af25ea91ea66bd29464d958d9
+    accepted_upstream_digest: sha256:3f1b6e5aad32d9e6680e0e9f8cb127aef8d21f48e6a69f9e213b3c23e4076785
+    accepted_destination_digest: sha256:3f1b6e5aad32d9e6680e0e9f8cb127aef8d21f48e6a69f9e213b3c23e4076785
   - id: profile
     destination: agents/warden/profile.md
     accepted_upstream_digest: sha256:c281534824e85fe61bbe8a78f49cc168a4bc58443e83feef5b6802eb3525100c
@@ -254,7 +254,7 @@ units:
   - id: file
     destination: knowledge/agents.md
     accepted_upstream_digest: sha256:1258921f1194518a5ea7faadb96cce71cdb3ad452240acee239c30c7aecc3a00
-    accepted_destination_digest: sha256:a62e1904201f78851f7e8e4b869d2aee10a4d1d32ddd06a84c4441edffb3ecb1
+    accepted_destination_digest: sha256:db1189df0a56d158060c7e94344119a977ab91782d97efd48a745a20597f0443
 - id: knowledge-debt
   mode: mirror
   declaration_unit_digest: sha256:495ed9cc2b5b8f92424e1ee01a9ffb9ee955885122e9b4fb18469cda7a3fb1fa
@@ -300,12 +300,12 @@ units:
 - id: root-runtime-spec
   mode: adapted
   declaration_unit_digest: sha256:61dae527e8a85831782776493d3cabb18ea2279d65fdc08f5b84e9a918053fd5
-  accepted_upstream_digest: sha256:a358d0b5d0e607e1cd2f0f76c4b4655e00e67eee0719306cff3544853bfd069f
+  accepted_upstream_digest: sha256:5e6cfc0728cf00f589dd0c8babbe2e10f74675b9016b3441def7aa27cb21c303
   members:
   - id: root
     destination: AGENTS.md
-    accepted_upstream_digest: sha256:2355b0f16cc32517c123b18709c9495db0e80b8e3a0ccc9b0e219b84b3a82c98
-    accepted_destination_digest: sha256:6f0dc446864b9701e7be52eec1e85d123052a0a39fa48ab68411c8e5d054f770
+    accepted_upstream_digest: sha256:0d6fe094c269e167a0cbb569d52f284025a5d68138ae06d49df77cc15fe82b76
+    accepted_destination_digest: sha256:ba41523d7bee28c8b729262ff25d61d680bc6b7755993bbba0263ba465d21a75
 - id: opencode-config
   mode: mirror
   declaration_unit_digest: sha256:27151a5125417f4fd12f1860851b4673c0440de713002ba6902e3632f0b7f59e
