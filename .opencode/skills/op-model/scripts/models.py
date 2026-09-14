@@ -25,6 +25,18 @@ import json
 import re
 import subprocess
 import sys
+from typing import TypedDict
+
+
+class ModelRecord(TypedDict):
+    """One parsed `provider/model` record with its cost fields."""
+
+    config: str
+    id: str
+    provider: str
+    name: str
+    cost_in: float
+    cost_out: float
 
 
 BLOCK_HEADER = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_+.-]*)/([A-Za-z0-9][A-Za-z0-9_+.-]*)$", re.M)
@@ -49,9 +61,9 @@ def fetch_verbose() -> str:
     return proc.stdout
 
 
-def parse_records(stdout: str) -> list[dict]:
+def parse_records(stdout: str) -> list[ModelRecord]:
     """Parse the `provider/model` header + JSON block structure into records."""
-    records: list[dict] = []
+    records: list[ModelRecord] = []
     pos = 0
     for match in BLOCK_HEADER.finditer(stdout):
         provider, model_id = match.group(1), match.group(2)
@@ -76,7 +88,7 @@ def parse_records(stdout: str) -> list[dict]:
     return records
 
 
-def _num(value) -> float:
+def _num(value: object) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -87,7 +99,7 @@ def normalize(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
-def matches(query: str, record: dict) -> bool:
+def matches(query: str, record: ModelRecord) -> bool:
     q = normalize(query)
     if not q:
         return True
@@ -100,7 +112,7 @@ def main() -> None:
 
     if not query:
         # Grouped human-readable listing (the "what can I use" reference).
-        by_provider: dict[str, list[dict]] = {}
+        by_provider: dict[str, list[ModelRecord]] = {}
         for rec in records:
             by_provider.setdefault(rec["provider"], []).append(rec)
         for provider in sorted(by_provider):

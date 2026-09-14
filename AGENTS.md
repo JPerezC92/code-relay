@@ -1,6 +1,7 @@
 # Cipher — CodeRelay
-> **Spec version:** 2.1.0
-> **Local version:** 1.0.0
+> **Spec version:** 2.2.0
+> **Local version:** 1.0.2
+> **Project identity:** CodeRelay
 
 ## Identity & Role
 
@@ -43,27 +44,6 @@ Persona CVs live at `agents/<name>/profile.md`; runtime specs at `.opencode/agen
 ## Shared agent rules
 
 See `knowledge/agents.md` — evidence discipline (facts vs hypotheses, never assumptions), bounded queries, screenshot-ready output, User-Authority-Only, PR review findings adjudication.
-
-## Reuse guide (adopting this core)
-
-AICore is a **reusable, agnostic core**: another project adopts it as a complete, versioned set and customizes it there. Adoption is **atomic** — a project accepts exactly one AICore revision for its whole applicable content, never a hand-picked subset, and never a mix of revisions. To adopt the core into another project:
-
-1. **Run `migrate-core-to-project`** — it detects the destination profile, enrolls the complete applicable unit set at one AICore revision (inapplicable units are recorded `not_applicable` under a machine-checked applicability rule), merges the required config, and bootstraps `.aicore/adoption.yaml`, `.aicore/adoption-review.yaml`, and `.aicore/adoption.lock.yaml`. Do not hand-copy individual files. Recurring updates use `sync-aicore-adoption`; never accept a partial set.
-2. **Keep the shared infrastructure** the agents reference:
-   - `knowledge/agents.md` (shared rules) and `knowledge/debt.md` (accepted-debt register)
-   - `knowledge/symptoms.md` (symptom-class catalog) and `knowledge/problems.md` (known-problem register)
-   - `plans/` and `user-stories/` (required by the `plan-enforce` skill)
-   - `output/` for temporal artifacts (audits, research, design — gitignored; agents create it on first write)
-3. **Adapt the stack-specific rulebooks** if your stack differs:
-   - `atrium.md` — the React Query / sonner / Zod / Tailwind frontend rulebook
-   - `bastion.md` — the backend & scripts rulebook (NestJS + Python)
-   - `crucible.md` — the Vitest / Playwright test rulebook
-   - `lumen.md` — the visual-system tool references
-   These are reference architectures: replace the rulebook body on copy, keep the agent frame.
-4. **Point the tokens to your project** — wherever an agent says "the project's X", substitute your real tooling. The core ships neutral on purpose.
-5. **Do not bump synced spec versions locally** — copies of synced or derived surfaces (root runtime spec, agent runtime specs, shared skills' versioned specs) keep the AICore ancestor's version (lineage map: root spec ← AGENTS.md, domain derivations ← investigator.md, everything else ← its same-name counterpart). Record destination-local changes in the destination's git history and user-story change log, never in the spec version field. Each destination root runtime spec adds a visible `> **Local version:** MAJOR.MINOR.PATCH` marker and each destination-derived agent spec adds frontmatter `local-version: MAJOR.MINOR.PATCH`; AICore ancestor surfaces omit `local-version`. Initialize local-version at `1.0.0` when adopting the matching AICore version. A destination-local runtime-spec edit advances only that surface's local SemVer: major for an incompatible local authority or safety change, minor for a new local enforceable capability or rule, and patch for a compatible local correction or clarification. An AICore sync never resets local-version; Git diff against the ancestor, not a version field, selects token-bearing merge behavior. `local-version` complements, never replaces, this single-lineage version policy and has no model, permission, or runtime-behavior effect.
-
-**Adopter registry.** `.aicore/adopters.yaml` is the single **shipped** AICore surface allowed to name external projects — the repositories `sync-aicore-adoption verify-all` checks. Every other shipped AICore surface stays neutral and names no adopter (local plans and gitignored temporal output are not shipped).
 
 ## Conventions
 

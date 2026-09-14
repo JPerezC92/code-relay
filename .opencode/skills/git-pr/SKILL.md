@@ -5,7 +5,7 @@ license: MIT
 compatibility: opencode
 metadata:
   author: Philip Perez Castro
-  version: 1.3.0
+  version: 1.3.1
   domain: git
 ---
 
@@ -40,7 +40,7 @@ None. The skill reads the current branch state directly from git.
     - `git branch --show-current`
 2. If the diff stat is small (under 20 files), run `git diff origin/main...HEAD` for the full diff. Otherwise, read the most relevant changed files selectively — reading the full diff on a large changeset wastes context; sample the highest-signal files instead. `git diff --cached --check` is a whitespace diagnostic only and is never PR scope evidence.
 3. Check for a plan or ticket file that explains the motivation — the PR Summary should explain the *why*, which usually lives in the plan/ticket Context, not the diff:
-   - Look for `plans/*.md` with `Status: active` or `Status: completed`
+   - Look for `plans/*.md` and `plans/*/plan.md` with `Status: active` or `Status: completed`
    - Look for ticket folders matching recent commit refs
    - If found, read the **Context** section for the why
 4. Determine the PR title and body from the diff following the format below.
@@ -82,7 +82,7 @@ type(scope): concise summary under 70 characters
 
 - **Summary**: focus on *why*, not *what* the diff shows — the diff is already visible
 - **Test plan**: at least 2 concrete, executable steps a reviewer can follow. Each item names the action and the observable expected result.
-- **Test plan format is mandatory** — every item MUST be a `- [ ]` checkbox (un-ticked in the draft). Herald 📯 converts prose items to checkboxes only when forced; the skill produces checkboxes from the start.
+- **Test plan format is mandatory** — every item MUST be a `- [ ]` checkbox (un-ticked in the draft). Herald 📯 (Release Manager) converts prose items to checkboxes only when forced; the skill produces checkboxes from the start.
 - **Test-plan draft boundary** — include only unchecked executable test-plan items. Do not include `[x]` items, test results, passing claims, or evidence claimed as executed.
 - **Test evidence quality** — a checkbox is ticked ONLY after a real run with recorded literal input→observed output evidence (per the project's Test-Evidence-Before-Done gate). A "logic trace", "it should work", or an UNROUTABLE-but-plausible reading is NOT execution.
 - Keep the body under 20 lines total
@@ -154,7 +154,7 @@ Title: <title here>
 - **Do NOT stage, commit, or push** anything.
 - **Do NOT tick test plan checkboxes** in the draft. Ticking happens later, in the PR body, after each item has been executed with live evidence.
 - **Do NOT force a PR title to match its branch.** A matching branch is a consistency check; the diff-derived title wins on mismatch and the mismatch must be reported.
-- **Do NOT use prose test items** ("Verify the X works"). Use `- [ ] <actionable item>` form. Herald 📯 converts prose → checkboxes only if forced; the skill must produce checkboxes from the start.
+- **Do NOT use prose test items** ("Verify the X works"). Use `- [ ] <actionable item>` form. Herald 📯 (Release Manager) converts prose → checkboxes only if forced; the skill must produce checkboxes from the start.
 - **Do NOT claim unexecuted evidence** in the draft or PR body. A checkbox remains unchecked until its complete post-PR evidence row is persisted and re-read.
 - **Do NOT use `git diff --cached --check` as scope evidence.** Use `git diff origin/main...HEAD` before PR creation and `git diff origin/main...<head-sha>` after the immutable PR head is known.
 - **Do NOT create, post, edit, identify, or delete GitHub comments or reviews.** Test evidence belongs only in the PR body.
@@ -182,7 +182,7 @@ Title: <title here>
 
 **PR body test plan was prose instead of `- [ ]` checkboxes**:
 - Cause: the draft used bullet sentences, not checkboxes.
-- Fix: rewrite the test items in `- [ ] <actionable step>` form. Herald 📯 should not need to convert prose to checkboxes; the skill produces the correct shape directly.
+- Fix: rewrite the test items in `- [ ] <actionable step>` form. Herald 📯 (Release Manager) should not need to convert prose to checkboxes; the skill produces the correct shape directly.
 
 **A checkbox was ticked without complete evidence**:
 - Cause: the PR body lacks the immutable head SHA, exact scope command, literal input, observed output, executor, or a persisted re-read.
