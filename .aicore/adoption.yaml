@@ -1,0 +1,189 @@
+# CodeRelay adoption declaration (schema v2).
+#
+# Enrolled by the AICore atomic-adoption contract at one accepted revision.
+# Every catalog unit appears exactly once: a real mode (mirror / adapted /
+# replacement / destination_owned) or `not_applicable` when the unit is not
+# `always` and its applicability is false under `profile`.
+#
+# Digests, the accepted source commit, and the intent digest are generated
+# into the lock by `propose-lock`, never written here.
+schema_version: 2
+upstream_repository: JPerezC92/ai-core
+profile:
+  backend_stack: false
+  python_scripts: true
+  ticket_system: false
+units:
+  # ---------------------------------------------------------------- skills
+  - id: git-branch-name
+    mode: mirror
+    members:
+      - { id: tree, destination: .opencode/skills/git-branch-name }
+
+  - id: git-commit
+    mode: mirror
+    members:
+      - { id: tree, destination: .opencode/skills/git-commit }
+
+  - id: git-pr
+    mode: mirror
+    members:
+      - { id: tree, destination: .opencode/skills/git-pr }
+
+  - id: op-agent-creator
+    mode: mirror
+    members:
+      - { id: tree, destination: .opencode/skills/op-agent-creator }
+
+  - id: op-model
+    mode: mirror
+    members:
+      - { id: tree, destination: .opencode/skills/op-model }
+
+  - id: op-skill-creator
+    mode: mirror
+    members:
+      - { id: tree, destination: .opencode/skills/op-skill-creator }
+
+  - id: plan-enforce
+    mode: mirror
+    members:
+      - { id: tree, destination: .opencode/skills/plan-enforce }
+
+  - id: query-verification
+    mode: not_applicable
+
+  - id: ticket-runbook
+    mode: not_applicable
+
+  # ---------------------------------------------------------------- agents
+  - id: atrium
+    mode: mirror
+    members:
+      - { id: spec, destination: .opencode/agents/atrium.md }
+      - { id: profile, destination: agents/atrium/profile.md }
+
+  - id: augur
+    mode: adapted
+    members:
+      - { id: spec, destination: .opencode/agents/augur.md }
+      - { id: profile, destination: agents/augur/profile.md }
+
+  - id: bastion
+    mode: mirror
+    members:
+      - { id: spec, destination: .opencode/agents/bastion.md }
+      - { id: profile, destination: agents/bastion/profile.md }
+
+  - id: crucible
+    mode: mirror
+    members:
+      - { id: spec, destination: .opencode/agents/crucible.md }
+      - { id: profile, destination: agents/crucible/profile.md }
+
+  - id: forge
+    mode: mirror
+    members:
+      - { id: spec, destination: .opencode/agents/forge.md }
+      - { id: profile, destination: agents/forge/profile.md }
+
+  - id: herald
+    mode: mirror
+    members:
+      - { id: spec, destination: .opencode/agents/herald.md }
+      - { id: profile, destination: agents/herald/profile.md }
+
+  - id: inquisitor
+    mode: mirror
+    members:
+      - { id: spec, destination: .opencode/agents/inquisitor.md }
+      - { id: profile, destination: agents/inquisitor/profile.md }
+
+  - id: investigator
+    mode: not_applicable
+
+  - id: ledger
+    mode: not_applicable
+
+  - id: lumen
+    mode: mirror
+    members:
+      - { id: spec, destination: .opencode/agents/lumen.md }
+      - { id: profile, destination: agents/lumen/profile.md }
+
+  - id: marshal
+    mode: adapted
+    members:
+      - { id: spec, destination: .opencode/agents/marshal.md }
+      - { id: profile, destination: agents/marshal/profile.md }
+
+  - id: quill
+    mode: not_applicable
+
+  - id: scribe
+    mode: not_applicable
+
+  - id: sentinel
+    mode: adapted
+    members:
+      - { id: spec, destination: .opencode/agents/sentinel.md }
+      - { id: profile, destination: agents/sentinel/profile.md }
+
+  - id: vault
+    mode: adapted
+    members:
+      - { id: spec, destination: .opencode/agents/vault.md }
+      - { id: profile, destination: agents/vault/profile.md }
+
+  - id: warden
+    mode: mirror
+    members:
+      - { id: spec, destination: .opencode/agents/warden.md }
+      - { id: profile, destination: agents/warden/profile.md }
+
+  - id: cipher
+    mode: adapted
+    members:
+      - { id: profile, destination: agents/cipher/profile.md }
+
+  # ----------------------------------------------------------------- infra
+  - id: knowledge-agents
+    mode: adapted
+    members:
+      - { id: file, destination: knowledge/agents.md }
+
+  - id: knowledge-debt
+    mode: mirror
+    members:
+      - { id: file, destination: knowledge/debt.md }
+
+  - id: symptom-problem-register
+    mode: mirror
+    members:
+      - { id: symptoms, destination: knowledge/symptoms.md }
+      - { id: problems, destination: knowledge/problems.md }
+
+  - id: query-verification-design
+    mode: not_applicable
+
+  - id: plans
+    mode: mirror
+    members:
+      - { id: gitkeep, destination: plans/.gitkeep }
+
+  - id: user-stories
+    mode: mirror
+    members:
+      - { id: gitkeep, destination: user-stories/.gitkeep }
+
+  # ---------------------------------------------------------------- config
+  - id: root-runtime-spec
+    mode: adapted
+    members:
+      - { id: root, destination: AGENTS.md }
+
+  - id: opencode-config
+    mode: mirror
+
+  - id: gitignore-config
+    mode: mirror

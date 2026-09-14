@@ -1,0 +1,326 @@
+schema_version: 2
+upstream_repository: JPerezC92/ai-core
+accepted_source_commit: f6d02d7535d0795365b478f3bfc3fa3ef2b02a34
+accepted_catalog_digest: sha256:469e6d4d54faf1129088bd041cc2bd365abf4cf27d67f67c488f956f6a647c3e
+declaration_digest: sha256:52a0bddc5440b48ec7d20ca23968b11161afb221ade0bdc7cba017e9c7d0c4fa
+review_digest: sha256:ccee9b554e5ec590d0491a829c48c14d01ac80b32bc48a1c2b7a4cffca5989d3
+accepted_snapshot_digest: sha256:08edc95d37190811eeade2c45f7d35fbd478677f937719f3e551caf9aa57a245
+units:
+- id: git-branch-name
+  mode: mirror
+  declaration_unit_digest: sha256:7e8af0400be74337c7964e64d382f317c0a7e338808bcf7ea01a6002c49a497e
+  accepted_upstream_digest: sha256:2e67dc07ae0b37863729e214571de92932a70a6bfcc55575c69928808de5a229
+  members:
+  - id: tree
+    destination: .opencode/skills/git-branch-name
+    accepted_upstream_digest: sha256:52125e7c54e3af0d4ebdb29acfa5a3d93889748a41b8bd79cbab3326c0769d5d
+    accepted_destination_digest: sha256:52125e7c54e3af0d4ebdb29acfa5a3d93889748a41b8bd79cbab3326c0769d5d
+- id: git-commit
+  mode: mirror
+  declaration_unit_digest: sha256:97725e73e874c9980e0862929f4f78055769faabcf434671f4cadda8590a6667
+  accepted_upstream_digest: sha256:7ca4ad562020814afecd9e5f9a5b1121f047f19cb51bff035187aeb220126075
+  members:
+  - id: tree
+    destination: .opencode/skills/git-commit
+    accepted_upstream_digest: sha256:7e12135c5c3c4e1e4893434dd8e61f777c29510c67ed9a90a6d60858a2fc4979
+    accepted_destination_digest: sha256:7e12135c5c3c4e1e4893434dd8e61f777c29510c67ed9a90a6d60858a2fc4979
+- id: git-pr
+  mode: mirror
+  declaration_unit_digest: sha256:2e192d3a630b5117cd1143b531c4b94fe645f59a53c2a685485ff3d58e177966
+  accepted_upstream_digest: sha256:1137539306a48c35ba301d89bdc072c8a1308ba3c817ea76eb65b7c00a9eff7b
+  members:
+  - id: tree
+    destination: .opencode/skills/git-pr
+    accepted_upstream_digest: sha256:2a870dc388488a83de48e7c5be84405c70d8aba24571ae5b6f2aae04f6f978a6
+    accepted_destination_digest: sha256:2a870dc388488a83de48e7c5be84405c70d8aba24571ae5b6f2aae04f6f978a6
+- id: op-agent-creator
+  mode: mirror
+  declaration_unit_digest: sha256:3bcd362cea7a4b44060824eeb0c3256172b3857bb3a8ea780d12c1db8e90b012
+  accepted_upstream_digest: sha256:9f13a3c48135496c259d33565433d6d5c74fef8bdf029fe27fc486073f702940
+  members:
+  - id: tree
+    destination: .opencode/skills/op-agent-creator
+    accepted_upstream_digest: sha256:707b483be2c1767823b74ff924d8e19129ea90fbce78dd481b0e06bd07972c2c
+    accepted_destination_digest: sha256:707b483be2c1767823b74ff924d8e19129ea90fbce78dd481b0e06bd07972c2c
+- id: op-model
+  mode: mirror
+  declaration_unit_digest: sha256:38ccde8592edce6dfc2bb6e509f954f7be7f5d3c77e917cbcac6f03296b77ab5
+  accepted_upstream_digest: sha256:f5b2e885dc44d26640ae987fdfffaf10b60962cff9c9df0ec77128347d8afd95
+  members:
+  - id: tree
+    destination: .opencode/skills/op-model
+    accepted_upstream_digest: sha256:f887b0bee2b9f688abe6601ec95680f2e8e5b880dfaa08611f8a37fbe60fbc68
+    accepted_destination_digest: sha256:f887b0bee2b9f688abe6601ec95680f2e8e5b880dfaa08611f8a37fbe60fbc68
+- id: op-skill-creator
+  mode: mirror
+  declaration_unit_digest: sha256:7f1a5d109dba7ee2c210ef5afacc4f44bd329ec757ea2ee1a810fd31e9e7493a
+  accepted_upstream_digest: sha256:467a2720e923f6e1095c602203da81b70de2d9d1f05573e92823a441ba5145aa
+  members:
+  - id: tree
+    destination: .opencode/skills/op-skill-creator
+    accepted_upstream_digest: sha256:96763cba7d534519d0a660cb4c59c930bf52c876f4929c730facc48a189b5e8b
+    accepted_destination_digest: sha256:96763cba7d534519d0a660cb4c59c930bf52c876f4929c730facc48a189b5e8b
+- id: plan-enforce
+  mode: mirror
+  declaration_unit_digest: sha256:0429cd1ea0bf469fad06c9dc07d18912c123df8e0ee297e2b03dc412f6998f2a
+  accepted_upstream_digest: sha256:469e797ac7e60d65924f1bd3e967f4e1a40a5a69074171cb1bec9cc5d26179d5
+  members:
+  - id: tree
+    destination: .opencode/skills/plan-enforce
+    accepted_upstream_digest: sha256:6212197ba9009ad5bd45bb14a74d4f0f930dbcd98af913e499f7d14bf6e9ea59
+    accepted_destination_digest: sha256:6212197ba9009ad5bd45bb14a74d4f0f930dbcd98af913e499f7d14bf6e9ea59
+- id: query-verification
+  mode: not_applicable
+- id: ticket-runbook
+  mode: not_applicable
+- id: atrium
+  mode: mirror
+  declaration_unit_digest: sha256:76fbc976cc22d98f541fc4f913b52f8b49543eb32118bf28883948ef4ad8f1e4
+  accepted_upstream_digest: sha256:b416c2b39786597fe5d61dbf83ab753fd8f080713b1fe7aba087ca6a6dfa3527
+  members:
+  - id: spec
+    destination: .opencode/agents/atrium.md
+    accepted_upstream_digest: sha256:1b43e6332feacbc47d5aef7b9411b258cf5d8759cd5dda1321e1928274163d36
+    accepted_destination_digest: sha256:1b43e6332feacbc47d5aef7b9411b258cf5d8759cd5dda1321e1928274163d36
+  - id: profile
+    destination: agents/atrium/profile.md
+    accepted_upstream_digest: sha256:390528956667c3ebab84febb2630cdb6a582d3693da58a5b78c4a39218f22247
+    accepted_destination_digest: sha256:390528956667c3ebab84febb2630cdb6a582d3693da58a5b78c4a39218f22247
+- id: augur
+  mode: adapted
+  declaration_unit_digest: sha256:40048cb71c8672369fa33b5fa13314d2b223be8ba4a92bd772701a97e0a7c0a8
+  accepted_upstream_digest: sha256:5992f0f309fd9a283c75028708dff6b8299ab6a8a6accfbccad1eb4823fc314d
+  members:
+  - id: spec
+    destination: .opencode/agents/augur.md
+    accepted_upstream_digest: sha256:47974fc74105b784b3385c616d75d8a47baec186b62cb38ea548556699912e94
+    accepted_destination_digest: sha256:dd214d47b9fb5031112e17a2a3187fe509bf08a79c721036875e38db9d0054b0
+  - id: profile
+    destination: agents/augur/profile.md
+    accepted_upstream_digest: sha256:af03e3e8e51ff748059e06d17c55ccff1216b7b09538aeb4bd4b911651835c90
+    accepted_destination_digest: sha256:2dbea48121cc1a9dbce71fda46b9cafa7305ae4df02142086163a8d8671bcc80
+- id: bastion
+  mode: mirror
+  declaration_unit_digest: sha256:b1dafe344d993e85ce4832948376bac10da775ed74d38543ff2c56e63a7cf520
+  accepted_upstream_digest: sha256:04e1de6ce3527a6bd4c14a0c6432aaa2b9c81b5d0acf32305707fd491329eb3d
+  members:
+  - id: spec
+    destination: .opencode/agents/bastion.md
+    accepted_upstream_digest: sha256:a982c245a081a176f6a65392cdd005e19d6bc21942dc12f3ab541e3971e09bc3
+    accepted_destination_digest: sha256:a982c245a081a176f6a65392cdd005e19d6bc21942dc12f3ab541e3971e09bc3
+  - id: profile
+    destination: agents/bastion/profile.md
+    accepted_upstream_digest: sha256:2188407d45cb55aa14b2fbd5491b82be14026ff0b24d89ba92db899a8aecbdb0
+    accepted_destination_digest: sha256:2188407d45cb55aa14b2fbd5491b82be14026ff0b24d89ba92db899a8aecbdb0
+- id: crucible
+  mode: mirror
+  declaration_unit_digest: sha256:cd980807e4141300c1c8eb3b40721f35bdc7f3f9bb6915e249cd15ac718c51ed
+  accepted_upstream_digest: sha256:d460b568a64ccd0c57215edc7c3b7719ff1905b3de0ac0cfaffa04a4b58ff2d8
+  members:
+  - id: spec
+    destination: .opencode/agents/crucible.md
+    accepted_upstream_digest: sha256:ad7c86fe90412cda3a0bbbb52302e12a8330bf018c0001db1edac0e77935ca55
+    accepted_destination_digest: sha256:ad7c86fe90412cda3a0bbbb52302e12a8330bf018c0001db1edac0e77935ca55
+  - id: profile
+    destination: agents/crucible/profile.md
+    accepted_upstream_digest: sha256:2c18221735f9b7633c1cc4ef3e8a296a5ca9f5cd1f3d5937487e214a4d52f876
+    accepted_destination_digest: sha256:2c18221735f9b7633c1cc4ef3e8a296a5ca9f5cd1f3d5937487e214a4d52f876
+- id: forge
+  mode: mirror
+  declaration_unit_digest: sha256:8b5c58969782c37a352be07dd6c857afdcb94426168b21d263d625928ed5a2f8
+  accepted_upstream_digest: sha256:ce83be1cd2fc0f8fc7027a0124bcb3c1b5286b17d6473061e202959100ed99dd
+  members:
+  - id: spec
+    destination: .opencode/agents/forge.md
+    accepted_upstream_digest: sha256:37a98123fd340699fbd7ca15ed9942aa6e82628968f8bc10e25f7df8e8a76616
+    accepted_destination_digest: sha256:37a98123fd340699fbd7ca15ed9942aa6e82628968f8bc10e25f7df8e8a76616
+  - id: profile
+    destination: agents/forge/profile.md
+    accepted_upstream_digest: sha256:81b8e2af72ad0098abec45685ee40227ac1a0936410ce8f1ccff14f058660f14
+    accepted_destination_digest: sha256:81b8e2af72ad0098abec45685ee40227ac1a0936410ce8f1ccff14f058660f14
+- id: herald
+  mode: mirror
+  declaration_unit_digest: sha256:f0c3f7885ccc3dc803233270b469549bc32ea2ba57514683d8ad35be122c8331
+  accepted_upstream_digest: sha256:50ddeb641ae8620fb7c788d8b477c271bb36de35c64f8b479fdc2dca852e613c
+  members:
+  - id: spec
+    destination: .opencode/agents/herald.md
+    accepted_upstream_digest: sha256:285c1cdf128b6e7de51922fdcc2688cd66ccd96ff56e19c90ee2574fe82f5bd5
+    accepted_destination_digest: sha256:285c1cdf128b6e7de51922fdcc2688cd66ccd96ff56e19c90ee2574fe82f5bd5
+  - id: profile
+    destination: agents/herald/profile.md
+    accepted_upstream_digest: sha256:3ddfc2e3b2d495b099241cb607286385715d4df652f9a69f26fca6ff78668392
+    accepted_destination_digest: sha256:3ddfc2e3b2d495b099241cb607286385715d4df652f9a69f26fca6ff78668392
+- id: inquisitor
+  mode: mirror
+  declaration_unit_digest: sha256:1a9eb020652576367fae5b8836cfe0e27b2249c6c1bb1858769792fdd76a5abd
+  accepted_upstream_digest: sha256:16465f52b4ee40e29a3e51e61eb2b63b1b53a619e183d03947c71dd975ff0b87
+  members:
+  - id: spec
+    destination: .opencode/agents/inquisitor.md
+    accepted_upstream_digest: sha256:4cb93a16fda106ccd79d461021bed4aff8ace004bfcb4b68809c455473075144
+    accepted_destination_digest: sha256:4cb93a16fda106ccd79d461021bed4aff8ace004bfcb4b68809c455473075144
+  - id: profile
+    destination: agents/inquisitor/profile.md
+    accepted_upstream_digest: sha256:630fa0a3a4b2889d7149c77c4d084d6d8bd76dc38a2b8fcaa699a6c107fdc5ad
+    accepted_destination_digest: sha256:630fa0a3a4b2889d7149c77c4d084d6d8bd76dc38a2b8fcaa699a6c107fdc5ad
+- id: investigator
+  mode: not_applicable
+- id: ledger
+  mode: not_applicable
+- id: lumen
+  mode: mirror
+  declaration_unit_digest: sha256:462ac45a5ececa8bdeeec961c2634e5c169eb03f943a7421fcc7c89acd1ac039
+  accepted_upstream_digest: sha256:4029ee570364fd0a2ca30519b8b5e4d786f32e18d08462c308c40e66036292c5
+  members:
+  - id: spec
+    destination: .opencode/agents/lumen.md
+    accepted_upstream_digest: sha256:cd2476d7d9bc306a89fb5faf0341847176fb04d5abd6b35098d1adfcc173fc4c
+    accepted_destination_digest: sha256:cd2476d7d9bc306a89fb5faf0341847176fb04d5abd6b35098d1adfcc173fc4c
+  - id: profile
+    destination: agents/lumen/profile.md
+    accepted_upstream_digest: sha256:ea7338fc538fdf9f979f28c1086cd60dc2970b9e5ac75d00f71a76484cadd9e3
+    accepted_destination_digest: sha256:ea7338fc538fdf9f979f28c1086cd60dc2970b9e5ac75d00f71a76484cadd9e3
+- id: marshal
+  mode: adapted
+  declaration_unit_digest: sha256:f4f2e6e1494101b514c681dbb843e575968e6739543fbdf06beec2051e2a13c9
+  accepted_upstream_digest: sha256:b9a923c5fd76e93ff5b8db12665246dc4c09d52eb2333e6b292bf1babc68e69f
+  members:
+  - id: spec
+    destination: .opencode/agents/marshal.md
+    accepted_upstream_digest: sha256:8aa089226141031a5d26bff6da3ce8e68526a2df03c85330c924ec35373f3e05
+    accepted_destination_digest: sha256:72cf7d268825557dd2596485a690ebe73323d829b27acac963978aca114209b6
+  - id: profile
+    destination: agents/marshal/profile.md
+    accepted_upstream_digest: sha256:61319daaeffed0fe7193a3f4952d47d00d41e537f59017c3b3494c74b9d08628
+    accepted_destination_digest: sha256:b1ba8e689d483c381a4626a5061a4f43458386ed9999254f7d79f28e0694fbf2
+- id: quill
+  mode: not_applicable
+- id: scribe
+  mode: not_applicable
+- id: sentinel
+  mode: adapted
+  declaration_unit_digest: sha256:860bb01a8645122b877ecfa5d673596cab02477ad8990e56ce66304b1027cad7
+  accepted_upstream_digest: sha256:c41c48fb467a5469119eb3b4bbaecd30518f1dcb54fbcfb2aa13b12d31097d35
+  members:
+  - id: spec
+    destination: .opencode/agents/sentinel.md
+    accepted_upstream_digest: sha256:51c10cb30205838af1bbc75a9161e06ff4eb18da09a61a7efd87cd895bc3cf4f
+    accepted_destination_digest: sha256:bb91d6dc8e3b70f30f6a2b162ace1c465fbfcd470c2b69b6cb5e3261ceecb137
+  - id: profile
+    destination: agents/sentinel/profile.md
+    accepted_upstream_digest: sha256:7b8ae042d71e8d3a273cee70f553ca07cc31ef968ad69d472b459e23c5262d89
+    accepted_destination_digest: sha256:7b8ae042d71e8d3a273cee70f553ca07cc31ef968ad69d472b459e23c5262d89
+- id: vault
+  mode: adapted
+  declaration_unit_digest: sha256:d882d411d7a800debacc692aa191fcd3aeac2b887daac9777646c20848d099cc
+  accepted_upstream_digest: sha256:771a0877f5f8123afc4669d299b3065d19c014999c34d2209c6ab1b88cfb19fd
+  members:
+  - id: spec
+    destination: .opencode/agents/vault.md
+    accepted_upstream_digest: sha256:50e5bf88bf8e9b59102f1d8464ab8968843e53f98299653fffe806e1c4c1c4cf
+    accepted_destination_digest: sha256:b57ce90833925ff3949239f0becb9eea5f918e4e2126416096064577779b0d1a
+  - id: profile
+    destination: agents/vault/profile.md
+    accepted_upstream_digest: sha256:e3982eba33c7ae7ac751bb02ca8508aa8250f0dd794011f406243dde8273f8e7
+    accepted_destination_digest: sha256:386a8cb90a0f87eed5110c0af2cb89521df35f86ef0cb76eac9da6596b55dd7f
+- id: warden
+  mode: mirror
+  declaration_unit_digest: sha256:ce05c2fd6f2f0e8f6f497a2309e85bdaadd48a3e324a6d470c38992c9bbe4f94
+  accepted_upstream_digest: sha256:9ee7d52e3f167f453e9624cecab4ffe43dc6aa3952a251665c522c445f17a4b7
+  members:
+  - id: spec
+    destination: .opencode/agents/warden.md
+    accepted_upstream_digest: sha256:8308e37d6dd2941f2968eb90a2df22d630b4800af25ea91ea66bd29464d958d9
+    accepted_destination_digest: sha256:8308e37d6dd2941f2968eb90a2df22d630b4800af25ea91ea66bd29464d958d9
+  - id: profile
+    destination: agents/warden/profile.md
+    accepted_upstream_digest: sha256:c281534824e85fe61bbe8a78f49cc168a4bc58443e83feef5b6802eb3525100c
+    accepted_destination_digest: sha256:c281534824e85fe61bbe8a78f49cc168a4bc58443e83feef5b6802eb3525100c
+- id: cipher
+  mode: adapted
+  declaration_unit_digest: sha256:623a8930f433869ebc97f52d3172d0f30cf17db4fa097c3605cfa86ebf390887
+  accepted_upstream_digest: sha256:6b5c9c80c876bc2b12c4c522762349da54a92ad764c425b9f230071a63c1eb64
+  members:
+  - id: profile
+    destination: agents/cipher/profile.md
+    accepted_upstream_digest: sha256:53d0e67c54be890793f2937516d8769a2f94fd5651252f1fa35e5bbab7747c2e
+    accepted_destination_digest: sha256:bbb5b1c319b964624a8b9003c08bf8d8c711bddc9267ec5309b22b2b9f8b2ec9
+- id: knowledge-agents
+  mode: adapted
+  declaration_unit_digest: sha256:0fc543a224b7ecf8e7159253a14196dd67217b780227b3b493161069459b6f87
+  accepted_upstream_digest: sha256:87ae4fcb941a2e1107524d98a7483419507fb72ce63277870085e1bff5fb2b5d
+  members:
+  - id: file
+    destination: knowledge/agents.md
+    accepted_upstream_digest: sha256:1258921f1194518a5ea7faadb96cce71cdb3ad452240acee239c30c7aecc3a00
+    accepted_destination_digest: sha256:a62e1904201f78851f7e8e4b869d2aee10a4d1d32ddd06a84c4441edffb3ecb1
+- id: knowledge-debt
+  mode: mirror
+  declaration_unit_digest: sha256:495ed9cc2b5b8f92424e1ee01a9ffb9ee955885122e9b4fb18469cda7a3fb1fa
+  accepted_upstream_digest: sha256:178edbd5f5776d60c36a6991dcc8a3327ce6a7e3c409f8e52897c6bdd150a917
+  members:
+  - id: file
+    destination: knowledge/debt.md
+    accepted_upstream_digest: sha256:5bbbf9ad76599ce0060742394371d58bac185befb4767997f31b0d2f56066cf9
+    accepted_destination_digest: sha256:5bbbf9ad76599ce0060742394371d58bac185befb4767997f31b0d2f56066cf9
+- id: symptom-problem-register
+  mode: mirror
+  declaration_unit_digest: sha256:11d32c72fce1f8d26f57b7b43c11e39533123990038aa587d0158570c732597b
+  accepted_upstream_digest: sha256:b446d7ce55d2c5167e88285003a44c73313e377a9882a232510d60d10949a38d
+  members:
+  - id: symptoms
+    destination: knowledge/symptoms.md
+    accepted_upstream_digest: sha256:6ff2225e380e66a3ed7b8faca9303d8c9bd8719afc2ef08dfd0891b4edcdd401
+    accepted_destination_digest: sha256:6ff2225e380e66a3ed7b8faca9303d8c9bd8719afc2ef08dfd0891b4edcdd401
+  - id: problems
+    destination: knowledge/problems.md
+    accepted_upstream_digest: sha256:5e931963c473e6dc78ecc6de447e70b934704d3454780e76ff993031f727ce5f
+    accepted_destination_digest: sha256:5e931963c473e6dc78ecc6de447e70b934704d3454780e76ff993031f727ce5f
+- id: query-verification-design
+  mode: not_applicable
+- id: plans
+  mode: mirror
+  declaration_unit_digest: sha256:3f617f894e71ccc5b9d670bff7a2fc0247cd43022233216e64a57c3bbdbc4a24
+  accepted_upstream_digest: sha256:0019009788f241b37278e454e281d530de8d981261af343318e3414ea3c5c3cb
+  members:
+  - id: gitkeep
+    destination: plans/.gitkeep
+    accepted_upstream_digest: sha256:f40a812e978b62d13347a47831581016250ea8cba5364d0eb84911697a2568e2
+    accepted_destination_digest: sha256:f40a812e978b62d13347a47831581016250ea8cba5364d0eb84911697a2568e2
+- id: user-stories
+  mode: mirror
+  declaration_unit_digest: sha256:acf4814a39da5795aa6d41048c1cec0aaf52a80a2a990c07173a14d2073d38b2
+  accepted_upstream_digest: sha256:0019009788f241b37278e454e281d530de8d981261af343318e3414ea3c5c3cb
+  members:
+  - id: gitkeep
+    destination: user-stories/.gitkeep
+    accepted_upstream_digest: sha256:f40a812e978b62d13347a47831581016250ea8cba5364d0eb84911697a2568e2
+    accepted_destination_digest: sha256:f40a812e978b62d13347a47831581016250ea8cba5364d0eb84911697a2568e2
+- id: root-runtime-spec
+  mode: adapted
+  declaration_unit_digest: sha256:61dae527e8a85831782776493d3cabb18ea2279d65fdc08f5b84e9a918053fd5
+  accepted_upstream_digest: sha256:a358d0b5d0e607e1cd2f0f76c4b4655e00e67eee0719306cff3544853bfd069f
+  members:
+  - id: root
+    destination: AGENTS.md
+    accepted_upstream_digest: sha256:2355b0f16cc32517c123b18709c9495db0e80b8e3a0ccc9b0e219b84b3a82c98
+    accepted_destination_digest: sha256:6f0dc446864b9701e7be52eec1e85d123052a0a39fa48ab68411c8e5d054f770
+- id: opencode-config
+  mode: mirror
+  declaration_unit_digest: sha256:27151a5125417f4fd12f1860851b4673c0440de713002ba6902e3632f0b7f59e
+  accepted_upstream_digest: sha256:c86660dd81e870846593b6e506ad407db239398bc046b0d32355f2298fa048d5
+  members:
+  - id: assertions
+    destination: opencode.jsonc
+    accepted_upstream_digest: sha256:c86660dd81e870846593b6e506ad407db239398bc046b0d32355f2298fa048d5
+    accepted_destination_digest: sha256:cbef55e586b2bcb013e501dc5aea02603fb2567b7bc0e70da69bfe5faacfc106
+- id: gitignore-config
+  mode: mirror
+  declaration_unit_digest: sha256:27151a5125417f4fd12f1860851b4673c0440de713002ba6902e3632f0b7f59e
+  accepted_upstream_digest: sha256:3f521078b259f7af79baddf83ae5c3632944c5128360f9f95b9d009b5fa3f488
+  members:
+  - id: assertions
+    destination: .gitignore
+    accepted_upstream_digest: sha256:3f521078b259f7af79baddf83ae5c3632944c5128360f9f95b9d009b5fa3f488
+    accepted_destination_digest: sha256:6a835a547a2faf2f8d5b599d3b0a34b9721a1d71a71d8c3796a5ea3aeb6b720f

@@ -1,0 +1,10 @@
+node_modules/
+.DS_Store
+*.log
+.venv/
+.opencode/magic-context/
+__pycache__/
+output/
+pr-draft.md
+commit.txt
+plans/.completed/
