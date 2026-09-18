@@ -7,8 +7,10 @@
 # accepted baseline and the target revision. `mirror` and `not_applicable`
 # units need no decision.
 #
-# This review reconciles the sync to the accepted target revision: the two
-# changed non-mirror units carry an `applied` decision below.
+# This review reconciles syncs to the accepted target revision: changed
+# non-mirror units carry decisions below — `applied` for sentinel and
+# root-runtime-spec, `declined` for knowledge-agents under the ticket-free
+# profile.
 schema_version: 2
 upstream_repository: JPerezC92/ai-core
 decisions:
@@ -20,4 +22,9 @@ decisions:
   - unit: root-runtime-spec
     decision: applied
     evidence: "Adopted the ancestor spec version 2.2.0 and removed the upstream provenance marker and the upstream lineage section so AGENTS.md carries destination-only identity; CodeRelay-local roster omissions (no incident team) plus CodeRelay's own Cipher owns/does-NOT bullets, dev/cross-cutting roster, shared agent rules line, and conventions were retained."
+    reviewer: lead-orchestrator
+
+  - unit: knowledge-agents
+    decision: declined
+    evidence: "Upstream added an incident-only proactive-admission paragraph (Scribe admission, ticket-runbook collapse ordering, case/diagnostic/pack retention). CodeRelay declares ticket_system: false; investigator, ledger, quill, scribe, ticket-runbook, and query-verification are not_applicable, and the existing adaptation deliberately omits the incident roster and workflow that paragraph governs. The adapted knowledge/agents.md is therefore left unchanged."
     reviewer: lead-orchestrator

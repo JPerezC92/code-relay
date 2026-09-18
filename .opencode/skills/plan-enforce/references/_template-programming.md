@@ -42,6 +42,14 @@
 
 - <decision 1> — <rationale> (simplest alternative considered: <alternative>, rejected because <reason>)
 
+## Write/delete manifest
+
+> One row per path this plan creates, changes, or deletes; `Action` is `Modify`, `Add`, or `Delete`, and `Path` is a single repo-relative path. The union of every phase runbook's `**Writes:**` paths must equal this set — the validator enforces it, so a `Delete` path is also listed in the deleting phase's `**Writes:**`.
+
+| Action | Path |
+|---|---|
+| Modify | `path/to/file` |
+
 ## Phase index — dispatch table
 
 | # | Phase | Owner | Runbook | Output | Goals |
@@ -72,6 +80,15 @@
 -->
 
 - Python stdlib `unittest` edits at an exact active-plan path: list the declared literal `python3` command for that exact file, obtain Bastion 🧱 (Backend & Scripts Architect) `[PASS]`, and require Crucible 🔥 (Test Architect) to return `[PASS]` or `[FAIL]` — `[UNCERTAIN]` is not acceptable for this scope. `pytest` is not introduced.
+
+## Audit
+
+> Filled by the independent auditor before the plan is reported ready or Forge 🔨 (Implementer) is dispatched. An unavailable auditor leaves the plan not-ready; a substitute requires explicit user authorization recorded here.
+
+- Auditor: not yet run
+- Verdict: [PENDING]
+- Findings: 0
+- Date: set when the independent audit runs
 
 ## Out of scope / Do-not-touch
 

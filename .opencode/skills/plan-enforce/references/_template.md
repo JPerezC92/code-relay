@@ -28,6 +28,14 @@
 
 <!-- Optional. Ordered list of data sources the script/agent reads. Remove section if not applicable. -->
 
+## Write/delete manifest
+
+> One row per path this plan creates, changes, or deletes; `Action` is `Modify`, `Add`, or `Delete`, and `Path` is a single repo-relative path. The union of every phase runbook's `**Writes:**` paths must equal this set — the validator enforces it, so a `Delete` path is also listed in the deleting phase's `**Writes:**`.
+
+| Action | Path |
+|---|---|
+| Modify | `path/to/file` |
+
 ## Phase index — dispatch table
 
 | # | Phase | Owner | Runbook | Output |
@@ -42,6 +50,15 @@
 
 - ⬜ Phase 1 output artifact exists and is valid
 - ⬜ All gates in each phase runbook passed
+
+## Audit
+
+> Filled by the independent auditor before the plan is reported ready or Forge 🔨 (Implementer) is dispatched. An unavailable auditor leaves the plan not-ready; a substitute requires explicit user authorization recorded here.
+
+- Auditor: not yet run
+- Verdict: [PENDING]
+- Findings: 0
+- Date: set when the independent audit runs
 
 ## Out of scope
 
