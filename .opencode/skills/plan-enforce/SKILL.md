@@ -1,11 +1,11 @@
 ---
 name: plan-enforce
-description: Enforce plan-first discipline for non-trivial tasks. Creates or resumes a subfolder plan artifact in plans/ before code-writing work. Use when the user asks to plan work, types /plan, or Cipher is about to dispatch Forge for implementation.
+description: Enforce plan-first discipline for non-trivial tasks. Creates or resumes a subfolder plan artifact in plans/ before code-writing work, and verifies a user-confirmed PR merge before branch cleanup. Use when the user asks to plan work, types /plan, Cipher is about to dispatch Forge for implementation, or a user confirms a PR merge.
 license: MIT
 compatibility: opencode
 metadata:
   author: Philip Perez Castro
-  version: 1.11.1
+  version: 1.12.1
 ---
 
 ## What I do
@@ -17,6 +17,7 @@ Create or resume a plan before non-trivial implementation work, then enforce its
 - User types `/plan` or asks to create, resume, or show a plan.
 - Cipher 🔓 (Lead Orchestrator) is about to dispatch Forge 🔨 (Implementer).
 - A current task changes scope or requires a new implementation phase.
+- A user confirms a PR merge and the merged branch needs verification before cleanup.
 
 ## Arguments
 
@@ -169,6 +170,7 @@ There is no "left as pending" state for a criterion in a touched story: an `⬜`
 
 When the plan's work is done and its audits have passed — before the release PR is built:
 
+- Confirm `## Audit` records an independent auditor's `[PASS]` with `Auditor`, `Findings`, and `Date` (see `### Independent audit gate`); `[PENDING]`, `[FAIL]`, or a missing audit blocks completion.
 - Run acceptance-criterion reconciliation (see `### Acceptance-criterion reconciliation`) over every touched story; block `## Outcome` and the archive move until no `⬜` or `❌` criterion remains — each is `✅` or removed as out-of-scope.
 - Present the goals resume in chat: one line per goal, `✅` when met, `❌` when not, each with a 1-line evidence note.
 - Write `## Outcome` into `plan.md` — what the plan produced, per goal — BEFORE moving the plan to `plans/.completed/`.
@@ -261,7 +263,7 @@ Before planning work that touches features, read `user-stories/index.md` first, 
 6. Select the template: `references/_template-programming.md` for programming plans, `references/_template.md` otherwise (see **Template selection**).
 7. Run the user-story gate: read `user-stories/index.md`, identify the touched features, and for each run CREATE / UPDATE / COLLIDE (see **User stories** + **User-story collision gate**). On collision, stop before creating any plan file and ask the user. If the plan skips stories (see **User-story scope**), record that in the plan's Context.
 8. Run the post-scope collision check. Stop on overlap; do not create files.
-9. Create `plans/<task-slug>-YYYYMMDD/plan.md` from the selected template and one `phase-NN-<owner>.md` from `references/_phase-template.md` per phase.
+9. Create `plans/<task-slug>-YYYYMMDD/plan.md` from the selected template and one `phase-NN-<owner>.md` from `references/_phase-template.md` per phase. Record the derived write/delete manifest in the plan's `## Write/delete manifest` section; its `Action`/`Path` rows must equal the union of the phases' `**Writes:**` paths, because the validator enforces that equality.
 10. Fill each phase's Owner, Pre, Reads, Writes, Steps, Output, Verify commands, Gate, and Abort conditions. Do not leave `TBD` in Steps, Output, Gate, or Abort.
 11. Add one verification checkbox per phase output and confirm every checkbox traces to a phase output.
 12. Run the post-write self-verification loop (below) on every written file.
@@ -272,12 +274,21 @@ Before planning work that touches features, read `user-stories/index.md` first, 
 Run after every file write (`plan.md`, each phase file, story create/update, index update), and after every Forge 🔨 (Implementer) dispatch that mutates plan artifacts. Iterate until a full pass finds zero violations:
 
 1. **Re-read** every file just written: `plan.md`, each `phase-NN-<owner>.md`, `user-stories/<slug>.md`, `user-stories/index.md`.
-2. **Mechanical pass** — for an active subfolder plan that creates or modifies a user story or `user-stories/index.md`, run `python3 .opencode/skills/plan-enforce/scripts/validate_plan.py <plan-dir> --stories user-stories` so index mirroring runs. For a no-stories path, run `python3 .opencode/skills/plan-enforce/scripts/validate_plan.py <plan-dir>` without `--stories`; use `python3 .opencode/skills/plan-enforce/scripts/validate_plan.py <plan.md> --single-file` for the single-file layout. It enforces the repetitive subset: Status enum, `Completed:` line, required sections, phase sections/labels, phase executor-command table presence/shape, unfilled `<...>`/`TBD`/date placeholders, index mirroring. Fix anything it reports.
+2. **Mechanical pass** — for an active subfolder plan that creates or modifies a user story or `user-stories/index.md`, run `python3 .opencode/skills/plan-enforce/scripts/validate_plan.py <plan-dir> --stories user-stories` so index mirroring runs. For a no-stories path, run `python3 .opencode/skills/plan-enforce/scripts/validate_plan.py <plan-dir>` without `--stories`; use `python3 .opencode/skills/plan-enforce/scripts/validate_plan.py <plan.md> --single-file` for the single-file layout. It enforces the repetitive subset: Status enum, `Completed:` line, required sections, phase sections/labels, phase executor-command table presence/shape, unfilled `<...>`/`TBD`/date placeholders, index mirroring, goal trace, manifest equality, verification parity, and the completed-plan audit gate. Fix anything it reports.
 3. **Analysis pass** — re-read each file against `references/_consistency-checklist.md`. Verify every value matches evidence: goals match the confirmed list, every phase traces to ≥1 goal and references an existing phase file, verification checkboxes trace to phase outputs, `## Writes` matches the manifest, story title/status mirror the index, and touched stories carry no `⬜` acceptance criteria at completion (see `### Acceptance-criterion reconciliation`). Never invent a value to satisfy a check — stop and ask.
-4. **Repeat** until a clean pass, then report the pass count.
+4. **Repeat** until a clean pass, then report the pass count in chat as `self-verification passes: N`.
 5. **Cap (S-07):** after 3 iterations, or the same violation persisting twice unchanged, stop-and-ask instead of looping.
 
 `scripts/validate_plan.py` is a helper, not the authority — it catches repetitive mechanical drift; semantic correctness is the analysis pass.
+
+### Independent audit gate
+
+A plan is never reported ready and Forge 🔨 (Implementer) is never dispatched on the writing agent's own word. Before a ready report or a Forge 🔨 (Implementer) dispatch, dispatch an independent auditor over the plan against `references/_consistency-checklist.md`:
+
+- **Auditor:** Sentinel 🛡️ (Quality Guardian) by default; Vault 🔐 (Catalog Steward) for catalog-heavy plans.
+- **Record:** write the outcome into `plan.md` under `## Audit` with `- Auditor:`, `- Verdict:`, `- Findings:`, and `- Date:`. The verdict is one of `[PENDING]`, `[PASS]`, `[FAIL]`.
+- **Gate:** the plan is not ready and Forge 🔨 (Implementer) is not dispatched until the verdict is `[PASS]` with a non-empty auditor and a date.
+- **Fail-closed:** if no auditor is available, the plan stays not-ready. A substitute auditor requires explicit user authorization, recorded in `## Audit`. Never self-audit, never invent a verdict, and never downgrade a `[FAIL]` to unblock dispatch.
 
 ## Plan lifecycle rules
 
@@ -286,12 +297,13 @@ Run after every file write (`plan.md`, each phase file, story create/update, ind
 | Any plan/phase/story/index file write | Run the post-write self-verification loop (mechanical + analysis) until clean. |
 | Phase completes | Mark its verification item complete in `plan.md`. |
 | Scope changes | Stop; notify the user with evidence of the drift and wait for their call; then update `## Goals` and append a dated line to `## Resolved decisions`; re-derive the manifest and re-run the collision check. |
-| Forge 🔨 (Implementer) dispatch | Run both stash-gate parts and require an active plan before dispatch. |
+| Forge 🔨 (Implementer) dispatch | Run both stash-gate parts, require an active plan, and require a recorded independent-audit `[PASS]` in `## Audit` before dispatch. |
+| Plan ready to report or resume | Require a recorded independent-audit `[PASS]` with auditor and date; an unavailable auditor leaves the plan not-ready (fail-closed). |
 | Audits pass, release PR requested | Present the goals resume in chat (`✅`/`❌` per goal with evidence), write `## Outcome`, set `Status: completed`, append `Completed: YYYY-MM-DD HH:MM`, and move the plan to `plans/.completed/` — all BEFORE the release PR is built. |
 | Plan was tracked mid-work | Stage the plan-file deletions into the completing PR; never stage a completed plan's content. |
 | PR review demands rework | Restore the plan folder from `plans/.completed/` per the reopen rule, resume, re-complete pre-release, and re-stage the deletions. |
 | Plan cancelled | Complete it as cancelled: `## Outcome` records the cancellation; a tracked cancelled plan retires through the next PR's deletions. |
-| User confirms PR merge | Run both stash-gate parts, verify `git diff origin/main <branch>` is empty, pull main, clean up branches. No post-merge archive step exists; optionally append the merge SHA / PR number to the local archive copy. |
+| User confirms PR merge | Run both stash-gate parts. Confirm the PR state is `MERGED` via `gh pr view "$PR_NUMBER" --json state,mergeCommit,headRefName,headRefOid`, then `git fetch origin main` and pin the immutable PR head `HEAD_REF_OID`. Require `git rev-parse "$BRANCH"` to equal `HEAD_REF_OID` (halt on mismatch). If `mergeCommit` is non-empty, require `git merge-base --is-ancestor "$MERGE_COMMIT" origin/main` to succeed. If `git merge-base --is-ancestor "$BRANCH" origin/main` succeeds (merge-commit or fast-forward), branch-tip ancestry proves the merge and `git branch -d` applies. Otherwise (squash or rebase merge) prove content parity on the immutable head: `MERGE_BASE="$(git merge-base origin/main "$HEAD_REF_OID")"`, then `git diff --name-only -z "$MERGE_BASE" "$HEAD_REF_OID" > "$PATHS_FILE"` while checking its status (an empty result is allowed), then load the NUL-delimited paths into `CHANGED_PATHS` with a read loop; the proof is `git diff --quiet --exit-code origin/main "$HEAD_REF_OID" -- "${CHANGED_PATHS[@]}"` exiting 0. Any metadata, fetch, head-mismatch, merge-base, extraction, ancestry, or diff error blocks deletion; only after that proof is `git branch -D` authorized. Never `-D` without a `MERGED` state plus a parity proof. Then fast-forward local main and delete the local branch plus the remote branch when it still exists. No post-merge archive step exists; user-only merge authority is unchanged. |
 
 Git tracks only incomplete plans. Stage plan artifacts only while their plan is incomplete; a plan tracked mid-work leaves git through file deletions staged in its own completing PR; a single-session plan is never committed anywhere. Plans remain active through implementation and audit — completion and archive happen pre-release. Never delete a plan, create an archive commit, invoke a merge command, or mutate a stash during archival.
 
@@ -307,6 +319,8 @@ Published documents must not cite `plans/` or `output/` paths because plans move
 
 **Stale non-overlapping stash:** offer the user reconciliation options (e.g. `git stash apply` in their terminal) or leaving the stash untouched; never erase or replay it in the caller repository.
 
+**Post-merge cleanup:** pass the user-confirmed `$PR_NUMBER` and `$BRANCH`, then run the `User confirms PR merge` row; `$HEAD_REF_OID`, `$MERGE_BASE`, `$PATHS_FILE`, and `$CHANGED_PATHS` are derived inside that sequence.
+
 **Goals lifecycle trace (present → confirm → drift → resume):** the user describes a task; goals are detected (`G1..Gn`), displayed as a readable Markdown goal list with a separate plan classification, then confirmed by one short `question` call. The confirmed goals are persisted as `## Goals` checkboxes. Mid-plan, a scope change drifts from a confirmed goal — work stops, the user is notified with evidence, and on their call the goal is updated with a dated line in `## Resolved decisions`. At completion — pre-release, after audits pass — the goals resume is presented in chat (`✅`/`❌` per goal), `## Outcome` is written, the plan is archived locally, and when the plan was ever tracked its deletions ride the completing PR. No post-merge archive step exists.
 
 ## Troubleshooting
@@ -314,5 +328,7 @@ Published documents must not cite `plans/` or `output/` paths because plans move
 **Live main SHA unavailable:** resolve the repository remote or authentication problem, then rerun the initial inventory. Do not proceed with a cached SHA.
 
 **Manifest overlaps a stash path:** change the planned write/delete scope or leave the plan blocked. The stash is never erased; the user may recover it later with `git stash apply` in their terminal.
+
+**Branch cleanup blocked:** a head/branch mismatch, an unchecked path extraction, or a non-empty parity diff means the branch is not proven merged — do not delete it; re-fetch and re-evaluate.
 
 **Permission denies stash inventory:** confirm `opencode.jsonc` retains targeted destructive-path denies followed by explicit read-only allows for `git stash list` and `git stash show -u`.

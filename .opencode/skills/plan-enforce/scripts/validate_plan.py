@@ -27,6 +27,12 @@ from typing import Optional, TypedDict
 
 ALLOWED_STATUS = frozenset({"active", "completed"})
 
+# Actions permitted in a plan's `## Write/delete manifest` table.
+ALLOWED_MANIFEST_ACTIONS = frozenset({"Add", "Delete", "Modify"})
+
+# Verdicts permitted in a plan's `## Audit` block.
+ALLOWED_AUDIT_VERDICTS = frozenset({"[PENDING]", "[PASS]", "[FAIL]"})
+
 # Sections every plan.md (base or programming template) must carry.
 BASE_REQUIRED_SECTIONS = [
     "## Context",
@@ -61,6 +67,12 @@ _DATE_RE = re.compile(r"YYYY-MM-DD")
 _COMMENT_RE = re.compile(r"<!--")
 _HTML_COMMENT_BLOCK_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _TABLE_SEPARATOR_CELL_RE = re.compile(r"^:?-+:?$")
+_GOAL_DEFINITION_RE = re.compile(r"\*\*(G\d+):\*\*")
+_GOAL_TOKEN_RE = re.compile(r"\bG\d+\b")
+_PHASE_RUNBOOK_RE = re.compile(r"phase-\d+-[^\s/`]+\.md")
+_WRITES_LABEL_RE = re.compile(r">\s*\*\*Writes:\*\*\s*(.*)$")
+_VERIFICATION_BULLET_RE = re.compile(r"^- [⬜✅]")
+_AUDIT_FIELD_RE = re.compile(r"^-\s*(\w+):\s*(.*)$")
 
 
 class PlanMetadata(TypedDict, total=False):
@@ -247,6 +259,26 @@ def check_plan_snapshot(snapshot: PlanSnapshot) -> list[str]:
     return findings
 
 
+def validate_plan_snapshot(
+    snapshot: PlanSnapshot, phase_snapshots: list[PhaseSnapshot]
+) -> list[str]:
+    """Run the phase-aware plan invariants without file IO.
+
+    Goal trace, manifest equality, verification parity, and the audit gate need
+    the plan's phase files, so only directory validation calls this function;
+    single-file validation keeps the phase-free checks.
+    """
+    content = snapshot["content"]
+    status = parse_plan_metadata(content).get("Status", "").strip()
+    phase_names = [phase["name"] for phase in phase_snapshots]
+    findings: list[str] = []
+    findings.extend(check_goal_trace(content, phase_names))
+    findings.extend(check_manifest_equality(content, phase_snapshots))
+    findings.extend(check_verification_parity(content, len(phase_snapshots)))
+    findings.extend(check_audit_gate(content, status))
+    return findings
+
+
 def check_phase_file(phase_path: Path) -> list[str]:
     snapshot = load_phase_snapshot(phase_path)
     if snapshot is None:
@@ -260,6 +292,24 @@ def _extract_section_lines(content: str, heading: str) -> Optional[list[str]]:
     start: Optional[int] = None
     for index, line in enumerate(lines):
         if line.strip() == heading:
+            start = index + 1
+            break
+    if start is None:
+        return None
+    for index in range(start, len(lines)):
+        if lines[index].startswith("##"):
+            return lines[start:index]
+    return lines[start:]
+
+
+def _extract_section_lines_starting(
+    content: str, heading_prefix: str
+) -> Optional[list[str]]:
+    """Return the body lines under the first level-2 heading matching a prefix."""
+    lines = content.splitlines()
+    start: Optional[int] = None
+    for index, line in enumerate(lines):
+        if line.strip().startswith(heading_prefix):
             start = index + 1
             break
     if start is None:
@@ -343,6 +393,241 @@ def check_phase_verify_table(phase_name: str, content: str) -> list[str]:
     return findings
 
 
+def _extract_goal_ids(content: str) -> list[str]:
+    """Return ordered, de-duplicated goal ids declared under `## Goals`."""
+    section_lines = _extract_section_lines(content, "## Goals")
+    if section_lines is None:
+        return []
+    goal_ids: list[str] = []
+    for line in section_lines:
+        for match in _GOAL_DEFINITION_RE.finditer(line):
+            goal_id = match.group(1)
+            if goal_id not in goal_ids:
+                goal_ids.append(goal_id)
+    return goal_ids
+
+
+def check_goal_trace(plan_content: str, phase_names: list[str]) -> list[str]:
+    """Cross-check declared goals, the dispatch table, and phase runbooks.
+
+    Each dispatch row must name an existing `phase-*.md` runbook and every
+    existing phase file must appear in a row. When the dispatch table ends in a
+    `Goals` column, every cited goal id must be declared and every declared goal
+    id must be cited. Tables without a `Goals` column (base template) are still
+    checked for runbook existence and phase coverage.
+    """
+    findings: list[str] = []
+    goal_ids = _extract_goal_ids(plan_content)
+
+    section_lines = _extract_section_lines_starting(plan_content, "## Phase index")
+    if section_lines is None:
+        return ["GOAL-TRACE: plan.md is missing the ## Phase index dispatch section"]
+
+    block = _extract_table_block(section_lines)
+    if not block:
+        return ["GOAL-TRACE: ## Phase index has no dispatch table"]
+
+    header = _split_table_row(block[0])
+    has_goals_column = bool(header) and header[-1] == "Goals"
+
+    data_rows = [
+        row for row in block[1:] if not _is_table_separator(_split_table_row(row))
+    ]
+    if not data_rows:
+        return ["GOAL-TRACE: ## Phase index dispatch table has no data rows"]
+
+    referenced_runbooks: set[str] = set()
+    cited_goals: set[str] = set()
+    for index, row in enumerate(data_rows, start=1):
+        cells = _split_table_row(row)
+        runbook_cell = cells[3] if len(cells) > 3 else ""
+        runbook_match = _PHASE_RUNBOOK_RE.search(runbook_cell.replace("`", ""))
+        if runbook_match is None:
+            findings.append(
+                f"GOAL-TRACE: dispatch row {index} has no phase runbook reference"
+            )
+        else:
+            runbook = runbook_match.group(0)
+            if runbook not in phase_names:
+                findings.append(
+                    f"GOAL-TRACE: dispatch row {index} references missing phase file `{runbook}`"
+                )
+            else:
+                referenced_runbooks.add(runbook)
+
+        if has_goals_column and cells:
+            for goal_id in _GOAL_TOKEN_RE.findall(cells[-1]):
+                if goal_id not in goal_ids:
+                    findings.append(
+                        f"GOAL-TRACE: dispatch row {index} cites unknown goal `{goal_id}`"
+                    )
+                cited_goals.add(goal_id)
+
+    for phase_name in phase_names:
+        if phase_name not in referenced_runbooks:
+            findings.append(
+                f"GOAL-TRACE: phase file `{phase_name}` is not referenced by the phase index"
+            )
+
+    if has_goals_column:
+        for goal_id in goal_ids:
+            if goal_id not in cited_goals:
+                findings.append(
+                    f"GOAL-TRACE: goal `{goal_id}` is not cited by any phase"
+                )
+    return findings
+
+
+def _is_none_marker(text: str) -> bool:
+    """Return True for a `Writes` marker that declares "no writes" (`none`,
+    `None`, or the sentence form `none.`)."""
+    return text.replace("`", "").strip().rstrip(".").strip().lower() == "none"
+
+
+def _extract_writes_paths(content: str) -> set[str]:
+    """Return the normalized write paths declared in a phase's `Writes:` label."""
+    paths: set[str] = set()
+    for line in content.splitlines():
+        match = _WRITES_LABEL_RE.match(line)
+        if match is None:
+            continue
+        value = match.group(1).strip()
+        if _is_none_marker(value):
+            continue
+        for raw in value.split(";"):
+            if _is_none_marker(raw):
+                continue
+            path = raw.replace("`", "").strip().rstrip(".").strip()
+            if path:
+                paths.add(path)
+    return paths
+
+
+def check_manifest_equality(
+    plan_content: str, phase_snapshots: list[PhaseSnapshot]
+) -> list[str]:
+    """Compare the plan's write/delete manifest with the union of phase Writes.
+
+    The `## Write/delete manifest` table must use the exact `Action`/`Path`
+    header, each action must be `Modify`, `Add`, or `Delete`, and its normalized
+    path set must equal the union of every phase's normalized `**Writes:**`
+    paths (a `Writes` value of `none` contributes nothing).
+    """
+    findings: list[str] = []
+    writes_paths: set[str] = set()
+    for snapshot in phase_snapshots:
+        writes_paths |= _extract_writes_paths(snapshot["content"])
+
+    section_lines = _extract_section_lines(plan_content, "## Write/delete manifest")
+    if section_lines is None:
+        if writes_paths:
+            return [
+                "MANIFEST: plan.md is missing the ## Write/delete manifest section"
+            ]
+        return findings
+
+    block = _extract_table_block(section_lines)
+    if not block:
+        return ["MANIFEST: ## Write/delete manifest has no Action/Path table"]
+
+    header = _split_table_row(block[0])
+    if tuple(header) != ("Action", "Path"):
+        return [
+            "MANIFEST: ## Write/delete manifest table header must be exactly "
+            "`Action` then `Path`"
+        ]
+
+    manifest_paths: set[str] = set()
+    data_rows = [
+        row for row in block[1:] if not _is_table_separator(_split_table_row(row))
+    ]
+    for index, row in enumerate(data_rows, start=1):
+        cells = _split_table_row(row)
+        if len(cells) != 2:
+            findings.append(
+                f"MANIFEST: manifest row {index} must have exactly two cells "
+                "(`Action`, `Path`)"
+            )
+            continue
+        action = cells[0].strip()
+        path = cells[1].replace("`", "").strip()
+        if action not in ALLOWED_MANIFEST_ACTIONS:
+            findings.append(
+                f"MANIFEST: manifest row {index} action {action!r} not in "
+                f"{sorted(ALLOWED_MANIFEST_ACTIONS)}"
+            )
+        if path:
+            manifest_paths.add(path)
+
+    for path in sorted(writes_paths - manifest_paths):
+        findings.append(
+            f"MANIFEST: phase Writes path `{path}` is missing from the write/delete manifest"
+        )
+    for path in sorted(manifest_paths - writes_paths):
+        findings.append(
+            f"MANIFEST: manifest path `{path}` is not declared in any phase Writes"
+        )
+    return findings
+
+
+def check_verification_parity(plan_content: str, phase_count: int) -> list[str]:
+    """Require one `## Verification` checkbox per discovered phase file."""
+    section_lines = _extract_section_lines(plan_content, "## Verification")
+    if section_lines is None:
+        return ["VERIFICATION-PARITY: plan.md is missing the ## Verification section"]
+    count = sum(1 for line in section_lines if _VERIFICATION_BULLET_RE.match(line))
+    if count != phase_count:
+        return [
+            "VERIFICATION-PARITY: ## Verification has "
+            f"{count} checkbox(es) but the plan has {phase_count} phase file(s)"
+        ]
+    return []
+
+
+def _parse_audit_fields(content: str) -> Optional[dict[str, str]]:
+    """Return the `## Audit` fields when the section is present, else None."""
+    section_lines = _extract_section_lines(content, "## Audit")
+    if section_lines is None:
+        return None
+    fields: dict[str, str] = {}
+    for line in section_lines:
+        match = _AUDIT_FIELD_RE.match(line.strip())
+        if match:
+            fields[match.group(1)] = match.group(2).strip()
+    return fields
+
+
+def check_audit_gate(plan_content: str, status: str) -> list[str]:
+    """Enforce the audit contract: any verdict must be known, and a completed
+    plan must carry `[PASS]` with a non-empty auditor and a date."""
+    findings: list[str] = []
+    fields = _parse_audit_fields(plan_content)
+    if fields is not None:
+        verdict = fields.get("Verdict", "")
+        if verdict not in ALLOWED_AUDIT_VERDICTS:
+            findings.append(
+                f"AUDIT: Verdict {verdict!r} not in {sorted(ALLOWED_AUDIT_VERDICTS)}"
+            )
+
+    if status != "completed":
+        return findings
+
+    if fields is None:
+        findings.append("AUDIT: completed plan is missing the ## Audit section")
+        return findings
+
+    verdict = fields.get("Verdict", "")
+    if verdict != "[PASS]":
+        findings.append(
+            f"AUDIT: completed plan Verdict must be [PASS], found {verdict!r}"
+        )
+    if not fields.get("Auditor", ""):
+        findings.append("AUDIT: completed plan has an empty Auditor")
+    if not fields.get("Date", ""):
+        findings.append("AUDIT: completed plan has no Date")
+    return findings
+
+
 def check_phase_snapshot(snapshot: PhaseSnapshot) -> list[str]:
     """Evaluate an already-loaded phase snapshot without file IO."""
     content = snapshot["content"]
@@ -412,9 +697,15 @@ def validate_plan_dir(plan_dir: str, stories_dir: Optional[str]) -> int:
     violations: list[str] = []
 
     plan_path = base / "plan.md"
-    violations.extend(check_plan_file(plan_path))
-
+    plan_snapshot = load_plan_snapshot(plan_path)
     phase_snapshots = load_phase_snapshots(base)
+
+    if plan_snapshot is None:
+        violations.extend(check_plan_file(plan_path))
+    else:
+        violations.extend(check_plan_snapshot(plan_snapshot))
+        violations.extend(validate_plan_snapshot(plan_snapshot, phase_snapshots))
+
     for phase_snapshot in phase_snapshots:
         violations.extend(check_phase_snapshot(phase_snapshot))
 

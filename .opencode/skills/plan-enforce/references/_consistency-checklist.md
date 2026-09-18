@@ -10,9 +10,18 @@
 - Required sections present: `## Context`, `## Goals`, `## Critical files / tools`, `## Verification`, `## Out of scope` (or `## Out of scope / Do-not-touch`), plus `## Body` (base template) or `## Current state` + `## Behavior change` (programming template).
 - `## Goals` checkboxes present and match the confirmed goal list; programming goals each carry a `Done when:` criterion.
 - No unfilled placeholders: `<task subject>`, a literal `YYYY-MM-DD HH:MM`, or stray `<!-- -->` comment lines (the `## Pending` section may retain its example comments).
-- Every dispatch-table phase references an existing `phase-NN-<owner>.md` file.
-- Every phase traces to ≥1 goal ID (programming plans: the `Goals` column is populated for every phase).
-- Verification checkbox count equals the phase-output count; each verification checkbox traces to a phase output.
+- Goal trace: every dispatch-table row names an existing `phase-NN-<owner>.md` runbook, every phase file appears in the dispatch table, and (when the table ends in a `Goals` column) every cited goal ID exists and every declared goal ID is cited by ≥1 row.
+- Manifest equality: `## Write/delete manifest` is an `Action`/`Path` table using only `Modify`, `Add`, or `Delete`, and its normalized path set equals the union of every phase's `**Writes:**` paths (`none` contributes nothing).
+- Verification parity: the count of `## Verification` `- ⬜` / `- ✅` bullets equals the number of phase files; each verification checkbox traces to a phase output.
+- Audit gate: `## Audit` (when present) carries a `Verdict` in `[PENDING]`, `[PASS]`, `[FAIL]`; a `Status: completed` plan carries `[PASS]` with a non-empty `Auditor` and a set `Date`. An unknown verdict or an audit missing on a completed plan is a violation.
+
+## Audit gate
+
+- Shape on `plan.md`: `- Auditor:`, `- Verdict:`, `- Findings:`, `- Date:`.
+- `Auditor` — the independent auditor name, or `not yet run` while the plan is active.
+- `Verdict` — one of `[PENDING]`, `[PASS]`, `[FAIL]`.
+- `Date` — set when the independent audit runs.
+- A plan is not reported ready and Forge 🔨 (Implementer) is not dispatched until an independent auditor returns `[PASS]`. If no auditor can run, the plan stays not-ready; a substitute requires explicit user authorization recorded in `## Audit` (fail-closed).
 
 ## phase-NN-<owner>.md
 
@@ -34,4 +43,4 @@
 
 ## Loop rule
 
-Analysis items (everything above) are the skill's responsibility — a value must match evidence, never be invented to satisfy a check. `scripts/validate_plan.py` enforces only the mechanical/repetitive subset (enum values, section presence, placeholder/TBD detection, index mirroring, and the presence/shape of each phase's executor-command table); it is a helper, not the authority. Executor authority is an analysis item, never a mechanical pass.
+Analysis items (everything above) are the skill's responsibility — a value must match evidence, never be invented to satisfy a check. `scripts/validate_plan.py` enforces only the mechanical/repetitive subset: enum values, section presence, placeholder/TBD detection, goal trace, manifest equality, verification parity, the completed-plan audit gate, index mirroring, and the presence/shape of each phase's executor-command table. It is a helper, not the authority. Executor authority, goal wording, and audit quality are analysis items, never a mechanical pass.

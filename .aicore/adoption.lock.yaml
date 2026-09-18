@@ -1,10 +1,10 @@
 schema_version: 2
 upstream_repository: JPerezC92/ai-core
-accepted_source_commit: ba2e89182bf1c95b36c09effdb6ef6d7088e8d6f
-accepted_catalog_digest: sha256:515e1f45c24bdf370b3ab6c9bc09a788ee8ac58b1eb4417e65ea866c3886f62c
+accepted_source_commit: 549335a34653148b49bd6be348ea618b10585387
+accepted_catalog_digest: sha256:a84f7f2ae3e1e71c01f8aee9fcc5a2e6ce3465ae91314332b42effd59f317423
 declaration_digest: sha256:52a0bddc5440b48ec7d20ca23968b11161afb221ade0bdc7cba017e9c7d0c4fa
-review_digest: sha256:b2521d6d28414defd89a60aa654ad2632b4ffba33a7029caf72b00b4dc7c9751
-accepted_snapshot_digest: sha256:5d81712bd0e92eafedfba1f2379faf12f1ace5879dde1f9adefbe0e45b827bef
+review_digest: sha256:cfe90efa166027b758ef8bc4ba9302ba1e4858aa85eb9073c22333005e63bc0c
+accepted_snapshot_digest: sha256:52cac60da4d98491474cbd6583c63005e4b6608330619401b163b1ac3dff473b
 units:
 - id: git-branch-name
   mode: mirror
@@ -63,12 +63,12 @@ units:
 - id: plan-enforce
   mode: mirror
   declaration_unit_digest: sha256:0429cd1ea0bf469fad06c9dc07d18912c123df8e0ee297e2b03dc412f6998f2a
-  accepted_upstream_digest: sha256:469e797ac7e60d65924f1bd3e967f4e1a40a5a69074171cb1bec9cc5d26179d5
+  accepted_upstream_digest: sha256:b187791eeca57f07abd0ab861e90bb8e424f81fff2d3fc78da5a420452592aa5
   members:
   - id: tree
     destination: .opencode/skills/plan-enforce
-    accepted_upstream_digest: sha256:6212197ba9009ad5bd45bb14a74d4f0f930dbcd98af913e499f7d14bf6e9ea59
-    accepted_destination_digest: sha256:6212197ba9009ad5bd45bb14a74d4f0f930dbcd98af913e499f7d14bf6e9ea59
+    accepted_upstream_digest: sha256:8dcc00e0389eefc4e0b9297d6b5f1506c159eece044604b32f04e4fd81cf9510
+    accepted_destination_digest: sha256:8dcc00e0389eefc4e0b9297d6b5f1506c159eece044604b32f04e4fd81cf9510
 - id: query-verification
   mode: not_applicable
 - id: ticket-runbook
@@ -141,12 +141,12 @@ units:
 - id: herald
   mode: mirror
   declaration_unit_digest: sha256:f0c3f7885ccc3dc803233270b469549bc32ea2ba57514683d8ad35be122c8331
-  accepted_upstream_digest: sha256:50ddeb641ae8620fb7c788d8b477c271bb36de35c64f8b479fdc2dca852e613c
+  accepted_upstream_digest: sha256:76a7fe4a55f8618a422c7a2d73e5e287b6f58f8618044efd840c962b795524b2
   members:
   - id: spec
     destination: .opencode/agents/herald.md
-    accepted_upstream_digest: sha256:285c1cdf128b6e7de51922fdcc2688cd66ccd96ff56e19c90ee2574fe82f5bd5
-    accepted_destination_digest: sha256:285c1cdf128b6e7de51922fdcc2688cd66ccd96ff56e19c90ee2574fe82f5bd5
+    accepted_upstream_digest: sha256:84c4c42e0210f24867685effee96d729e5f46f2216c0e4856ad85369b8458efa
+    accepted_destination_digest: sha256:84c4c42e0210f24867685effee96d729e5f46f2216c0e4856ad85369b8458efa
   - id: profile
     destination: agents/herald/profile.md
     accepted_upstream_digest: sha256:3ddfc2e3b2d495b099241cb607286385715d4df652f9a69f26fca6ff78668392
@@ -249,11 +249,11 @@ units:
 - id: knowledge-agents
   mode: adapted
   declaration_unit_digest: sha256:0fc543a224b7ecf8e7159253a14196dd67217b780227b3b493161069459b6f87
-  accepted_upstream_digest: sha256:87ae4fcb941a2e1107524d98a7483419507fb72ce63277870085e1bff5fb2b5d
+  accepted_upstream_digest: sha256:c7c4fea168e68139ab1439d2cb5f4210a761d553a51fc415488ea709bc82cd48
   members:
   - id: file
     destination: knowledge/agents.md
-    accepted_upstream_digest: sha256:1258921f1194518a5ea7faadb96cce71cdb3ad452240acee239c30c7aecc3a00
+    accepted_upstream_digest: sha256:cd0069eaffd16db4cc11dba55082d9274e361b3db66754c91a5bb24ec62b82fc
     accepted_destination_digest: sha256:db1189df0a56d158060c7e94344119a977ab91782d97efd48a745a20597f0443
 - id: knowledge-debt
   mode: mirror
@@ -267,7 +267,7 @@ units:
 - id: symptom-problem-register
   mode: mirror
   declaration_unit_digest: sha256:11d32c72fce1f8d26f57b7b43c11e39533123990038aa587d0158570c732597b
-  accepted_upstream_digest: sha256:b446d7ce55d2c5167e88285003a44c73313e377a9882a232510d60d10949a38d
+  accepted_upstream_digest: sha256:6457e4ba34f8eabb1b56240a06b42e3c7bae0b6ce58744505c4897a4f1d9437d
   members:
   - id: symptoms
     destination: knowledge/symptoms.md
@@ -275,8 +275,8 @@ units:
     accepted_destination_digest: sha256:6ff2225e380e66a3ed7b8faca9303d8c9bd8719afc2ef08dfd0891b4edcdd401
   - id: problems
     destination: knowledge/problems.md
-    accepted_upstream_digest: sha256:5e931963c473e6dc78ecc6de447e70b934704d3454780e76ff993031f727ce5f
-    accepted_destination_digest: sha256:5e931963c473e6dc78ecc6de447e70b934704d3454780e76ff993031f727ce5f
+    accepted_upstream_digest: sha256:c5a2b23268350cc07b747aef3288c5c7cbe40f1921bb34e0067a3a82d5844621
+    accepted_destination_digest: sha256:c5a2b23268350cc07b747aef3288c5c7cbe40f1921bb34e0067a3a82d5844621
 - id: query-verification-design
   mode: not_applicable
 - id: plans

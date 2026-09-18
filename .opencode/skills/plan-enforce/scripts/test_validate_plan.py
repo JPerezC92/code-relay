@@ -36,6 +36,17 @@ VALID_PLAN = """# Plan — sample
 |---|---|---|
 | sample | sample | sample |
 
+## Phase index — dispatch table
+
+| # | Phase | Owner | Runbook | Output | Goals |
+|---|---|---|---|---|---|
+| 1 | sample | Vault (Catalog Steward) | `phase-01-owner.md` | sample | G1 |
+
+## Write/delete manifest
+
+| Action | Path |
+|---|---|
+
 ## Critical files / tools
 
 -
@@ -79,12 +90,103 @@ VALID_PHASE = """# Phase 1 — sample
 - halt if broken
 """
 
+AUDIT_PENDING = """## Audit
+
+- Auditor: not yet run
+- Verdict: [PENDING]
+- Findings: 0
+- Date: set when the independent audit runs
+"""
+
+AUDIT_PASS = """## Audit
+
+- Auditor: Sentinel (Quality Guardian)
+- Verdict: [PASS]
+- Findings: 0
+- Date: 2026-09-15
+"""
+
+AUDIT_FAIL = """## Audit
+
+- Auditor: Sentinel (Quality Guardian)
+- Verdict: [FAIL]
+- Findings: 2
+- Date: 2026-09-15
+"""
+
+AUDIT_UNKNOWN = """## Audit
+
+- Auditor: Sentinel (Quality Guardian)
+- Verdict: [MAYBE]
+- Findings: 0
+- Date: 2026-09-15
+"""
+
+# Phase-aware fixture: two goals, a dispatch table that traces both runbooks to
+# their goal, a manifest equal to the union of the phase Writes paths, and one
+# verification checkbox per phase.
+PHASE_AWARE_PLAN = """# Plan — sample
+
+> **Status:** active
+> **Started:** 2026-08-20 18:37
+> **Subject:** sample plan
+> **Layout:** subfolder pattern
+
+## Context
+
+- Prompted by: test
+
+## Goals
+
+- ⬜ **G1:** sample goal
+- ⬜ **G2:** second goal
+
+## Current state
+
+| Area | Current file / behavior | Evidence |
+|---|---|---|
+| sample | sample | sample |
+
+## Phase index — dispatch table
+
+| # | Phase | Owner | Runbook | Output | Goals |
+|---|---|---|---|---|---|
+| 1 | one | Owner | `phase-01-owner.md` | out one | G1 |
+| 2 | two | Owner | `phase-02-owner.md` | out two | G2 |
+
+## Write/delete manifest
+
+| Action | Path |
+|---|---|
+| Modify | `src/a.py` |
+| Modify | `src/b.py` |
+
+## Critical files / tools
+
+-
+
+## Verification
+
+- ⬜ one
+- ⬜ two
+
+## Out of scope
+
+-
+"""
+
+PHASE_ONE = VALID_PHASE.replace("> **Writes:** none.", "> **Writes:** `src/a.py`.")
+PHASE_TWO = VALID_PHASE.replace("> **Writes:** none.", "> **Writes:** `src/b.py`.")
+
 
 class ValidatePlanTests(unittest.TestCase):
     def _write(self, d: str, name: str, content: str) -> Path:
         p = Path(d) / name
         p.write_text(content, encoding="utf-8")
         return p
+
+    def _phase_snapshot(self, name: str, content: str) -> vp.PhaseSnapshot:
+        return {"name": name, "content": content}
 
     def test_valid_subfolder_passes(self) -> None:
         with tempfile.TemporaryDirectory() as d:
@@ -127,6 +229,7 @@ class ValidatePlanTests(unittest.TestCase):
                 "plan.md",
                 VALID_PLAN.replace("2026-08-20 18:37", "YYYY-MM-DD"),
             )
+            self._write(d, "phase-01-owner.md", VALID_PHASE)
             stderr = io.StringIO()
             with contextlib.redirect_stderr(stderr):
                 result = vp.validate_plan_dir(d, stories_dir=None)
@@ -175,6 +278,7 @@ class ValidatePlanTests(unittest.TestCase):
     def test_validate_plan_dir_missing_story_index_outputs_exact_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             self._write(d, "plan.md", VALID_PLAN)
+            self._write(d, "phase-01-owner.md", VALID_PHASE)
             stories_dir = Path(d) / "user-stories"
             stories_dir.mkdir()
             self._write(
@@ -195,6 +299,7 @@ class ValidatePlanTests(unittest.TestCase):
     def test_validate_plan_dir_story_status_mismatch_outputs_exact_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             self._write(d, "plan.md", VALID_PLAN)
+            self._write(d, "phase-01-owner.md", VALID_PHASE)
             stories_dir = Path(d) / "user-stories"
             stories_dir.mkdir()
             self._write(
@@ -410,6 +515,182 @@ class ValidatePlanTests(unittest.TestCase):
             self.assertEqual(
                 findings,
                 ["INDEX-MISSING: story slug `my-feature` not listed in index.md"],
+            )
+
+    def test_goal_trace_valid_passes(self) -> None:
+        self.assertEqual(
+            vp.check_goal_trace(
+                PHASE_AWARE_PLAN, ["phase-01-owner.md", "phase-02-owner.md"]
+            ),
+            [],
+        )
+
+    def test_goal_trace_uncited_goal_flagged(self) -> None:
+        bad = PHASE_AWARE_PLAN.replace("| out two | G2 |", "| out two | G1 |")
+        self.assertEqual(
+            vp.check_goal_trace(bad, ["phase-01-owner.md", "phase-02-owner.md"]),
+            ["GOAL-TRACE: goal `G2` is not cited by any phase"],
+        )
+
+    def test_goal_trace_unknown_goal_flagged(self) -> None:
+        bad = PHASE_AWARE_PLAN.replace("| out two | G2 |", "| out two | G9 |")
+        self.assertEqual(
+            vp.check_goal_trace(bad, ["phase-01-owner.md", "phase-02-owner.md"]),
+            [
+                "GOAL-TRACE: dispatch row 2 cites unknown goal `G9`",
+                "GOAL-TRACE: goal `G2` is not cited by any phase",
+            ],
+        )
+
+    def test_goal_trace_missing_phase_runbook_flagged(self) -> None:
+        self.assertEqual(
+            vp.check_goal_trace(PHASE_AWARE_PLAN, ["phase-01-owner.md"]),
+            [
+                "GOAL-TRACE: dispatch row 2 references missing phase file "
+                "`phase-02-owner.md`"
+            ],
+        )
+
+    def test_goal_trace_unreferenced_phase_file_flagged(self) -> None:
+        self.assertEqual(
+            vp.check_goal_trace(
+                PHASE_AWARE_PLAN,
+                ["phase-01-owner.md", "phase-02-owner.md", "phase-03-owner.md"],
+            ),
+            [
+                "GOAL-TRACE: phase file `phase-03-owner.md` is not referenced "
+                "by the phase index"
+            ],
+        )
+
+    def test_manifest_equality_valid_passes(self) -> None:
+        snapshots = [
+            self._phase_snapshot("phase-01-owner.md", PHASE_ONE),
+            self._phase_snapshot("phase-02-owner.md", PHASE_TWO),
+        ]
+        self.assertEqual(vp.check_manifest_equality(PHASE_AWARE_PLAN, snapshots), [])
+
+    def test_manifest_missing_phase_path_flagged(self) -> None:
+        bad_plan = PHASE_AWARE_PLAN.replace("| Modify | `src/b.py` |\n", "")
+        snapshots = [
+            self._phase_snapshot("phase-01-owner.md", PHASE_ONE),
+            self._phase_snapshot("phase-02-owner.md", PHASE_TWO),
+        ]
+        self.assertEqual(
+            vp.check_manifest_equality(bad_plan, snapshots),
+            [
+                "MANIFEST: phase Writes path `src/b.py` is missing from the "
+                "write/delete manifest"
+            ],
+        )
+
+    def test_manifest_extra_path_flagged(self) -> None:
+        bad_plan = PHASE_AWARE_PLAN.replace(
+            "| Modify | `src/b.py` |",
+            "| Modify | `src/b.py` |\n| Add | `src/z.py` |",
+        )
+        snapshots = [
+            self._phase_snapshot("phase-01-owner.md", PHASE_ONE),
+            self._phase_snapshot("phase-02-owner.md", PHASE_TWO),
+        ]
+        self.assertEqual(
+            vp.check_manifest_equality(bad_plan, snapshots),
+            ["MANIFEST: manifest path `src/z.py` is not declared in any phase Writes"],
+        )
+
+    def test_manifest_unknown_action_flagged(self) -> None:
+        bad_plan = PHASE_AWARE_PLAN.replace(
+            "| Modify | `src/a.py` |", "| Remove | `src/a.py` |"
+        )
+        snapshots = [
+            self._phase_snapshot("phase-01-owner.md", PHASE_ONE),
+            self._phase_snapshot("phase-02-owner.md", PHASE_TWO),
+        ]
+        self.assertEqual(
+            vp.check_manifest_equality(bad_plan, snapshots),
+            ["MANIFEST: manifest row 1 action 'Remove' not in ['Add', 'Delete', 'Modify']"],
+        )
+
+    def test_manifest_none_writes_need_no_manifest_section(self) -> None:
+        plan = VALID_PLAN.replace("## Write/delete manifest\n\n| Action | Path |\n|---|---|\n\n", "")
+        snapshots = [self._phase_snapshot("phase-01-owner.md", VALID_PHASE)]
+        self.assertEqual(vp.check_manifest_equality(plan, snapshots), [])
+
+    def test_verification_parity_valid_passes(self) -> None:
+        self.assertEqual(vp.check_verification_parity(PHASE_AWARE_PLAN, 2), [])
+
+    def test_verification_parity_mismatch_flagged(self) -> None:
+        self.assertEqual(
+            vp.check_verification_parity(PHASE_AWARE_PLAN, 1),
+            [
+                "VERIFICATION-PARITY: ## Verification has 2 checkbox(es) but the "
+                "plan has 1 phase file(s)"
+            ],
+        )
+
+    def test_verification_parity_counts_completed_bullets(self) -> None:
+        plan = PHASE_AWARE_PLAN.replace("- ⬜ two", "- ✅ two", 1)
+        self.assertEqual(vp.check_verification_parity(plan, 2), [])
+
+    def test_audit_gate_pending_active_passes(self) -> None:
+        self.assertEqual(
+            vp.check_audit_gate(PHASE_AWARE_PLAN + AUDIT_PENDING, "active"), []
+        )
+
+    def test_audit_gate_absent_on_active_passes(self) -> None:
+        self.assertEqual(vp.check_audit_gate(PHASE_AWARE_PLAN, "active"), [])
+
+    def test_audit_gate_completed_without_audit_flagged(self) -> None:
+        self.assertEqual(
+            vp.check_audit_gate(PHASE_AWARE_PLAN, "completed"),
+            ["AUDIT: completed plan is missing the ## Audit section"],
+        )
+
+    def test_audit_gate_completed_fail_flagged(self) -> None:
+        self.assertEqual(
+            vp.check_audit_gate(PHASE_AWARE_PLAN + AUDIT_FAIL, "completed"),
+            ["AUDIT: completed plan Verdict must be [PASS], found '[FAIL]'"],
+        )
+
+    def test_audit_gate_unknown_verdict_flagged(self) -> None:
+        self.assertEqual(
+            vp.check_audit_gate(PHASE_AWARE_PLAN + AUDIT_UNKNOWN, "active"),
+            ["AUDIT: Verdict '[MAYBE]' not in ['[FAIL]', '[PASS]', '[PENDING]']"],
+        )
+
+    def test_audit_gate_completed_pass_passes(self) -> None:
+        self.assertEqual(
+            vp.check_audit_gate(PHASE_AWARE_PLAN + AUDIT_PASS, "completed"), []
+        )
+
+    def test_validate_plan_dir_phase_aware_valid_fixture_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            self._write(d, "plan.md", PHASE_AWARE_PLAN)
+            self._write(d, "phase-01-owner.md", PHASE_ONE)
+            self._write(d, "phase-02-owner.md", PHASE_TWO)
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                result = vp.validate_plan_dir(d, stories_dir=None)
+
+            self.assertEqual(result, 0)
+            self.assertEqual(stdout.getvalue(), f"ok  plan: {d}  phases: 2\n")
+
+    def test_validate_plan_dir_manifest_drift_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            self._write(
+                d, "plan.md", PHASE_AWARE_PLAN.replace("| Modify | `src/b.py` |\n", "")
+            )
+            self._write(d, "phase-01-owner.md", PHASE_ONE)
+            self._write(d, "phase-02-owner.md", PHASE_TWO)
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = vp.validate_plan_dir(d, stories_dir=None)
+
+            self.assertEqual(result, 1)
+            self.assertEqual(
+                stderr.getvalue(),
+                "MANIFEST: phase Writes path `src/b.py` is missing from the "
+                "write/delete manifest\n",
             )
 
 
