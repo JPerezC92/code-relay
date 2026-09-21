@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "CodeRelay",
+    "slug": "coderelay",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "android": {
+      "package": "app.coderelay.mobile"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow CodeRelay to scan the OpenCode pairing QR",
+          "barcodeScannerEnabled": true,
+          "recordAudioAndroid": false
+        }
+      ]
+    ]
+  }
+}
