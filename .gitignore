@@ -8,3 +8,12 @@ output/
 pr-draft.md
 commit.txt
 plans/.completed/
+.turbo/
+.expo/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+apps/mobile/android/
+apps/mobile/ios/
