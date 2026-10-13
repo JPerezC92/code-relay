@@ -16,6 +16,9 @@ import { GatewayClientError, getGatewayClient } from '@/shared/transport/gateway
 import type { GatewayClient } from '@/shared/transport/gateway-client';
 import type {
   ChatMessage,
+  ModelChoice,
+  ModelListResult,
+  ModelRef,
   ProjectSummary,
   SessionActionResult,
   SessionListResult,
@@ -77,6 +80,48 @@ function parseSessions(value: unknown): SessionSummary[] | null {
     if (session !== null) sessions.push(session);
   }
   return sessions;
+}
+
+function readNonEmptyString(record: Record<string, unknown>, key: string): string | null {
+  const value = readString(record, key);
+  if (value === null || value.length === 0) return null;
+  return value;
+}
+
+/**
+ * Builds a model row from the phase 1 shape and drops every other field,
+ * including a provider `key`, so the UI never sees host catalog extras.
+ */
+function parseModelChoice(raw: unknown): ModelChoice | null {
+  if (!isRecord(raw)) return null;
+  const providerID = readNonEmptyString(raw, 'providerID');
+  const modelID = readNonEmptyString(raw, 'modelID');
+  const label = readNonEmptyString(raw, 'label');
+  if (providerID === null || modelID === null || label === null) return null;
+  return { providerID, modelID, label };
+}
+
+function parseModelRef(raw: unknown): ModelRef | null {
+  if (!isRecord(raw)) return null;
+  const providerID = readNonEmptyString(raw, 'providerID');
+  const modelID = readNonEmptyString(raw, 'modelID');
+  if (providerID === null || modelID === null) return null;
+  return { providerID, modelID };
+}
+
+function parseModelList(value: unknown): ModelListResult | null {
+  if (!isRecord(value) || !Array.isArray(value['models'])) return null;
+  const models: ModelChoice[] = [];
+  for (const entry of value['models']) {
+    const model = parseModelChoice(entry);
+    if (model === null) return null;
+    models.push(model);
+  }
+  const rawDefault = value['defaultModel'];
+  if (rawDefault === null) return { models, defaultModel: null };
+  const defaultModel = parseModelRef(rawDefault);
+  if (defaultModel === null) return null;
+  return { models, defaultModel };
 }
 
 function parseProjects(value: unknown): ProjectSummary[] | null {
@@ -163,13 +208,30 @@ export const sessionService = {
     }
   },
 
+  async listModels(): Promise<ModelListResult | SessionServiceError> {
+    try {
+      const outcome = await runExclusive(() => gateway.sendAction({ type: 'model.list' }));
+      if (outcome instanceof GatewayClientError) {
+        return new SessionServiceError(outcome.message);
+      }
+      const models = parseModelList(outcome.result.value);
+      if (models === null) {
+        return new SessionServiceError('Host model list was malformed');
+      }
+      return models;
+    } catch (error) {
+      return toServiceError(error, 'Model list failed');
+    }
+  },
+
   async sendPrompt(
     sessionID: string,
     text: string,
+    model: ModelRef,
   ): Promise<SessionActionResult | SessionServiceError> {
     try {
       const outcome = await runExclusive(() =>
-        gateway.sendAction({ type: 'session.prompt', sessionID, text }),
+        gateway.sendAction({ type: 'session.prompt', sessionID, text, model }),
       );
       if (outcome instanceof GatewayClientError) {
         return new SessionServiceError(outcome.message);

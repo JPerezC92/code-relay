@@ -1,5 +1,7 @@
 import { sessionService } from '@/modules/session/services/session.service';
 import type {
+  ModelListResult,
+  SessionActionResult,
   SessionListResult,
   SessionPollResult,
 } from '@/modules/session/domain/entities/session';
@@ -45,8 +47,15 @@ function expectPollResult(
   return result;
 }
 
+function expectModelList(result: ModelListResult | SessionServiceError): ModelListResult {
+  if (result instanceof SessionServiceError) {
+    throw new Error(`Unexpected SessionServiceError: ${result.message}`);
+  }
+  return result;
+}
+
 function expectServiceError(
-  result: SessionListResult | SessionPollResult | SessionServiceError,
+  result: SessionListResult | SessionPollResult | ModelListResult | SessionActionResult | SessionServiceError,
 ): SessionServiceError {
   if (!(result instanceof SessionServiceError)) {
     throw new Error('Expected listSessions to return a SessionServiceError');
@@ -426,5 +435,118 @@ describe('sessionService.fetchMessages', () => {
 
     expect(error.message).toBe('Host message list was malformed');
     expect(error.name).toBe('SessionServiceError');
+  });
+});
+
+describe('sessionService.listModels', () => {
+  it('parses models and the default ref, stripping any extra provider key', async () => {
+    mockSendAction.mockResolvedValue({
+      result: {
+        type: 'model.list',
+        value: {
+          models: [
+            {
+              providerID: 'openai',
+              modelID: 'gpt-5',
+              label: 'GPT 5',
+              key: 'openai',
+              options: { temperature: 0 },
+              env: { OPENAI_API_KEY: 'sk-test' },
+              headers: { Authorization: 'Bearer sk-test' },
+              urls: { base: 'https://api.openai.com/v1' },
+            },
+          ],
+          defaultModel: {
+            providerID: 'openai',
+            modelID: 'gpt-5',
+            key: 'openai',
+            options: { temperature: 0 },
+            env: { OPENAI_API_KEY: 'sk-test' },
+            headers: { Authorization: 'Bearer sk-test' },
+            urls: { base: 'https://api.openai.com/v1' },
+          },
+        },
+      },
+      events: [],
+    });
+
+    const result = expectModelList(await sessionService.listModels());
+
+    expect(mockSendAction).toHaveBeenCalledWith({ type: 'model.list' });
+    expect(result.models).toStrictEqual([
+      { providerID: 'openai', modelID: 'gpt-5', label: 'GPT 5' },
+    ]);
+    expect(Object.keys(result.models[0] ?? {}).sort()).toStrictEqual([
+      'label',
+      'modelID',
+      'providerID',
+    ]);
+    expect(result.models[0]).not.toHaveProperty('key');
+    expect(result.models[0]).not.toHaveProperty('options');
+    expect(result.models[0]).not.toHaveProperty('env');
+    expect(result.models[0]).not.toHaveProperty('headers');
+    expect(result.models[0]).not.toHaveProperty('urls');
+    expect(result.defaultModel).toStrictEqual({ providerID: 'openai', modelID: 'gpt-5' });
+    expect(Object.keys(result.defaultModel ?? {}).sort()).toStrictEqual(['modelID', 'providerID']);
+    expect(result.defaultModel).not.toHaveProperty('key');
+    expect(result.defaultModel).not.toHaveProperty('options');
+    expect(result.defaultModel).not.toHaveProperty('env');
+    expect(result.defaultModel).not.toHaveProperty('headers');
+    expect(result.defaultModel).not.toHaveProperty('urls');
+  });
+
+  it('returns a null default when the host has no default model', async () => {
+    mockSendAction.mockResolvedValue({
+      result: {
+        type: 'model.list',
+        value: {
+          models: [{ providerID: 'opencode', modelID: 'big-pickle', label: 'Big Pickle' }],
+          defaultModel: null,
+        },
+      },
+      events: [],
+    });
+
+    const result = expectModelList(await sessionService.listModels());
+
+    expect(result.defaultModel).toBeNull();
+    expect(result.models).toHaveLength(1);
+  });
+
+  it('returns the strict malformed-model error when the payload is not the phase 1 shape', async () => {
+    mockSendAction.mockResolvedValue({
+      result: {
+        type: 'model.list',
+        value: {
+          providers: [{ key: 'openai', models: [] }],
+        },
+      },
+      events: [],
+    });
+
+    const error = expectServiceError(await sessionService.listModels());
+
+    expect(error.message).toBe('Host model list was malformed');
+    expect(error.name).toBe('SessionServiceError');
+  });
+});
+
+describe('sessionService.sendPrompt', () => {
+  it('sends session.prompt with the selected model ref', async () => {
+    mockSendAction.mockResolvedValue({
+      result: { type: 'session.prompt', value: null },
+      events: [],
+    });
+
+    const model = { providerID: 'openai', modelID: 'gpt-5' };
+    const result = await sessionService.sendPrompt('session-alpha', 'Review the diff', model);
+
+    expect(result).not.toBeInstanceOf(SessionServiceError);
+    expect(mockSendAction).toHaveBeenCalledWith({
+      type: 'session.prompt',
+      sessionID: 'session-alpha',
+      text: 'Review the diff',
+      model,
+    });
   });
 });

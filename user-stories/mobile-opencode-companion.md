@@ -26,6 +26,9 @@
 - ✅ One phone pairs to one Linux host with a single-use credential; later traffic is authenticated, replay-resistant, and end-to-end encrypted, with reconnect and host-side revocation. (Pairing + airplane-mode reconnect device-confirmed 2026-09-21; AES-256-GCM 12-byte nonce/16-byte tag unit-gated; host-local `revoke()` with queue clear satisfies revocation per the recorded `DEBT-002` decision)
 - ✅ The Android app first selects a project, including a project with no root sessions, and then lists only that project's root/main sessions, follows message and status updates for the selected session, sends prompts, aborts a run, and answers permission requests with approve-once or reject only; subagent sessions and host filesystem paths are never shown, and picker hierarchy, selected state, touch targets, and light-mode readability are accessible. (Picker/prompts/live-sync device-confirmed 2026-09-21; `once | reject` are the only parseable decisions end-to-end; the live host-ask delivery to the phone is deferred as `DEBT-005` with the release item unticked)
 - ✅ Automated protocol, plugin, and mobile tests plus a physical Android checklist cover pairing, reconnect, endpoint switching, permission safety, QR expiry, revocation, and failure behavior. (Tests pass under turbo; the phase-05 gate recorded every checklist result 2026-09-21 — reconnect and live sync device-confirmed; permission cards, QR expiry, endpoint switching, and on-device revocation recorded as accepted debts `DEBT-002`/`DEBT-005`/`DEBT-006`/`DEBT-007`, never silently skipped)
+- ✅ The project list opens from a hamburger menu. Choosing a project still selects it, including a project with no root sessions, and host paths stay hidden. (ChatScreen hamburger tests passed 2026-10-13; mobile 37/37)
+- ✅ Sessions for the selected project are chosen from a select on the main page, latest first, and that session still drives messages, send, and abort. (Newest-first fixture asserted; reselecting the current session does not clear messages)
+- ✅ The app lists host models and the selected model is sent on the next prompt. Provider secrets are not shown. (Plugin 158/158; projection test drops key, options, env, headers, and URLs)
 
 ## Change log
 
@@ -39,6 +42,7 @@
 - 2026-09-21 — mobile-opencode-companion-20260918: phase-11 outcome — the Android chat screen now respects status-bar and navigation-bar insets via `SafeAreaProvider`/`useSafeAreaInsets`, caps the Project and Sessions pickers as single-line horizontal scrollers with 44px targets, and keeps the composer above the keyboard; adds the pinned `react-native-safe-area-context@5.7.0` dependency.
  - 2026-09-21 — mobile-opencode-companion-20260918: plan completion reconciliation — all five acceptance criteria dispositioned with evidence; the physical checklist closed with reconnect and live sync device-confirmed and four accepted debts (`DEBT-002` on-device revocation, `DEBT-005` live permission-card delivery, `DEBT-006` QR expiry walk, `DEBT-007` endpoint switching) recorded at the user's direction; plan archived to `plans/.completed/` with its tracked deletions staged into the completing release PR.
 - 2026-10-11 — qr-pairing-modal-fit-20261011: the pairing QR stays one cell per module, shrinks its quiet zone to fit, and falls back to the endpoint URL when the matrix cannot fit; the modal uses the smallest dialog tier that fits that QR, and Esc clears the dialog, stops polling, and drops the payload.
+- 2026-10-13 — chat-nav-model-select-20261013: extend the project-first picker chrome. Projects move to a hamburger menu, sessions move to a latest-first select, and a host model select is added. Project-then-root-session selection is unchanged.
 
 ## Resolved decisions
 
@@ -49,3 +53,4 @@
 - 2026-09-18 — Pairing UX is an OpenCode TUI command or route, not a CLI-only ASCII QR and not a hosted relay.
 - 2026-09-20 — Project-first navigation: `parentID` absent defines a root/main session for the picker; host project/directory routing stays private and no mobile action accepts a filesystem path.
 - 2026-09-20 — Empty projects and visual accessibility: the host returns a mobile-safe project list separately from root summaries so zero-root projects can show an empty state; the mobile surface uses an explicit light appearance and accessible picker affordances.
+- 2026-10-13 — Navigation chrome: hamburger for projects and a latest-first session select replace the horizontal chip rows. Model choice is a projected `{ providerID, modelID, label }` list; provider secrets stay on the host.

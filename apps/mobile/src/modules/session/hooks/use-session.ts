@@ -3,16 +3,17 @@ import type { NormalizedEvent, PermissionDecision } from '@coderelay/protocol';
 import { SessionServiceError } from '@/modules/session/domain/errors/session-service.error';
 import type {
   ChatMessage,
+  ModelChoice,
+  ModelRef,
   PermissionRequest,
   ProjectSummary,
+  SessionStatus,
   SessionSummary,
 } from '@/modules/session/domain/entities/session';
 import { sessionService } from '@/modules/session/services/session.service';
 
 /** How often the hook drains host events and refreshes the selected history. */
 export const SESSION_POLL_INTERVAL_MS = 2_500;
-
-export type SessionStatus = 'idle' | 'busy';
 
 export interface UseSessionResult {
   sessions: SessionSummary[];
@@ -22,15 +23,42 @@ export interface UseSessionResult {
   selectedSessionId: string | null;
   messages: ChatMessage[];
   permissions: PermissionRequest[];
+  models: ModelChoice[];
+  selectedModel: ModelChoice | null;
   status: SessionStatus;
   isLoading: boolean;
   error: string | null;
   selectProject: (key: string) => void;
   selectSession: (sessionID: string) => void;
+  selectModel: (model: ModelRef) => void;
   sendPrompt: (text: string) => Promise<void>;
   abort: () => Promise<void>;
   replyToPermission: (permissionID: string, decision: PermissionDecision) => Promise<void>;
   refresh: () => void;
+}
+
+function sameModel(left: ModelRef, right: ModelRef): boolean {
+  return left.providerID === right.providerID && left.modelID === right.modelID;
+}
+
+/**
+ * Picks the prompt model without reordering rows. A still-valid selection wins.
+ * Otherwise the host default wins when it matches a row, then the first row.
+ */
+function resolveSelectedModel(
+  models: ModelChoice[],
+  defaultModel: ModelRef | null,
+  current: ModelChoice | null,
+): ModelChoice | null {
+  if (current !== null) {
+    const kept = models.find((model) => sameModel(model, current));
+    if (kept !== undefined) return kept;
+  }
+  if (defaultModel !== null) {
+    const match = models.find((model) => sameModel(model, defaultModel));
+    if (match !== undefined) return match;
+  }
+  return models[0] ?? null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -118,11 +146,17 @@ export function useSession(): UseSessionResult {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [permissions, setPermissions] = useState<PermissionRequest[]>([]);
+  const [models, setModels] = useState<ModelChoice[]>([]);
+  const [selectedModel, setSelectedModel] = useState<ModelChoice | null>(null);
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const selectedSessionIdRef = useRef<string | null>(null);
+  const selectedModelRef = useRef<ModelChoice | null>(null);
+  const modelsRef = useRef<ModelChoice[]>([]);
+  selectedModelRef.current = selectedModel;
+  modelsRef.current = models;
 
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
@@ -206,10 +240,22 @@ export function useSession(): UseSessionResult {
         setError(result.message);
         return;
       }
+      const modelsResult = await sessionService.listModels();
+      if (isCancelled !== undefined && isCancelled()) return;
       setError(null);
       setSessions(result.sessions);
       setProjects(result.projects);
       applyEvents(result.events);
+      if (modelsResult instanceof SessionServiceError) {
+        setModels([]);
+        setSelectedModel(null);
+        setError(modelsResult.message);
+        return;
+      }
+      setModels(modelsResult.models);
+      setSelectedModel((current) =>
+        resolveSelectedModel(modelsResult.models, modelsResult.defaultModel, current),
+      );
     },
     [applyEvents],
   );
@@ -279,6 +325,7 @@ export function useSession(): UseSessionResult {
   );
 
   const selectSession = useCallback((sessionID: string): void => {
+    if (sessionID === selectedSessionIdRef.current) return;
     setSelectedSessionId(sessionID);
     setMessages([]);
     setPermissions([]);
@@ -286,14 +333,24 @@ export function useSession(): UseSessionResult {
     setStatus('idle');
   }, []);
 
+  const selectModel = useCallback((model: ModelRef): void => {
+    const match = modelsRef.current.find((row) => sameModel(row, model));
+    if (match === undefined) return;
+    setSelectedModel(match);
+  }, []);
+
   const sendPrompt = useCallback(
     async (text: string): Promise<void> => {
       const sessionID = selectedSessionIdRef.current;
-      if (sessionID === null) return;
+      const model = selectedModelRef.current;
+      if (sessionID === null || model === null) return;
       const trimmed = text.trim();
       if (trimmed.length === 0) return;
       setStatus('busy');
-      const result = await sessionService.sendPrompt(sessionID, trimmed);
+      const result = await sessionService.sendPrompt(sessionID, trimmed, {
+        providerID: model.providerID,
+        modelID: model.modelID,
+      });
       if (result instanceof SessionServiceError) {
         setError(result.message);
         setStatus('idle');
@@ -348,11 +405,14 @@ export function useSession(): UseSessionResult {
     selectedSessionId,
     messages,
     permissions,
+    models,
+    selectedModel,
     status,
     isLoading,
     error,
     selectProject,
     selectSession,
+    selectModel,
     sendPrompt,
     abort,
     replyToPermission,

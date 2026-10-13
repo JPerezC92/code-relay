@@ -39,6 +39,9 @@ function createClient() {
   }));
   const client: OpenCodeClientLike = {
     session: { list, status, messages, promptAsync, abort },
+    provider: {
+      list: async () => ({ data: { providers: [], default: {} } }),
+    },
     postSessionIdPermissionsPermissionId,
   };
   return {

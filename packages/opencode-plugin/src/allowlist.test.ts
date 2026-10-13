@@ -17,6 +17,7 @@ import type {
 } from './allowlist';
 
 const ALPHA_DIRECTORY = '/home/user/proj-alpha';
+const PROMPT_MODEL = { providerID: 'openai', modelID: 'gpt-test' };
 
 function createClient() {
   const list = vi.fn(async (_options?: SessionListOptions): Promise<OpenCodeSdkResult> => ({
@@ -43,8 +44,13 @@ function createClient() {
     data: true,
     error: undefined,
   }));
+  const providerList = vi.fn(async (): Promise<OpenCodeSdkResult> => ({
+    data: { all: [] },
+    error: undefined,
+  }));
   const client: OpenCodeClientLike = {
     session: { list, status, messages, promptAsync, abort },
+    provider: { list: providerList },
     postSessionIdPermissionsPermissionId,
   };
   return {
@@ -55,17 +61,19 @@ function createClient() {
     promptAsync,
     abort,
     postSessionIdPermissionsPermissionId,
+    providerList,
   };
 }
 
 describe('allowlist', () => {
-  it('allows only the six protocol actions and their SDK methods', () => {
+  it('allows only the protocol actions and their SDK methods', () => {
     expect(isAllowedSdkMethod('session.list')).toBe(true);
     expect(isAllowedSdkMethod('session.status')).toBe(true);
     expect(isAllowedSdkMethod('session.messages')).toBe(true);
     expect(isAllowedSdkMethod('session.promptAsync')).toBe(true);
     expect(isAllowedSdkMethod('session.abort')).toBe(true);
     expect(isAllowedSdkMethod('postSessionIdPermissionsPermissionId')).toBe(true);
+    expect(isAllowedSdkMethod('provider.list')).toBe(true);
   });
 
   it('denies shell, file, and auth SDK methods', () => {
@@ -77,6 +85,7 @@ describe('allowlist', () => {
       'file.status',
       'auth.set',
       'mcp.add',
+      'provider.auth',
     ]) {
       expect(isAllowedSdkMethod(method)).toBe(false);
     }
@@ -120,11 +129,15 @@ describe('allowlist', () => {
       type: 'session.prompt',
       sessionID: 's1',
       text: 'hello',
+      model: PROMPT_MODEL,
     });
     expect(result).toStrictEqual({ type: 'session.prompt', value: null });
     expect(mocks.promptAsync).toHaveBeenCalledWith({
       path: { id: 's1' },
-      body: { parts: [{ type: 'text', text: 'hello' }] },
+      body: {
+        model: PROMPT_MODEL,
+        parts: [{ type: 'text', text: 'hello' }],
+      },
     });
   });
 
@@ -267,7 +280,12 @@ describe('allowlist', () => {
     });
 
     await expect(
-      executeAllowedAction(mocks.client, { type: 'session.prompt', sessionID: 'session-1', text: 'Hello' }),
+      executeAllowedAction(mocks.client, {
+        type: 'session.prompt',
+        sessionID: 'session-1',
+        text: 'Hello',
+        model: PROMPT_MODEL,
+      }),
     ).resolves.toStrictEqual({ type: 'session.prompt', value: null });
     await expect(
       executeAllowedAction(mocks.client, { type: 'session.abort', sessionID: 'session-1' }),
@@ -321,7 +339,7 @@ describe('allowlist', () => {
 
   it('maps protocol actions to allowlisted SDK calls with typed options', () => {
     expect(
-      toSdkCall({ type: 'session.prompt', sessionID: 's1', text: 'hi' }).sdkMethod,
+      toSdkCall({ type: 'session.prompt', sessionID: 's1', text: 'hi', model: PROMPT_MODEL }).sdkMethod,
     ).toBe('session.promptAsync');
     expect(toSdkCall({ type: 'session.abort', sessionID: 's1' }).sdkMethod).toBe('session.abort');
     expect(
@@ -385,12 +403,15 @@ describe('allowlist', () => {
     const mocks = createClient();
     await executeAllowedAction(
       mocks.client,
-      { type: 'session.prompt', sessionID: 'session-1', text: 'hello' },
+      { type: 'session.prompt', sessionID: 'session-1', text: 'hello', model: PROMPT_MODEL },
       ALPHA_DIRECTORY,
     );
     expect(mocks.promptAsync).toHaveBeenCalledWith({
       path: { id: 'session-1' },
-      body: { parts: [{ type: 'text', text: 'hello' }] },
+      body: {
+        model: PROMPT_MODEL,
+        parts: [{ type: 'text', text: 'hello' }],
+      },
       query: { directory: ALPHA_DIRECTORY },
     });
   });
@@ -449,6 +470,96 @@ describe('allowlist', () => {
       expect(Object.prototype.hasOwnProperty.call(statusOptions, 'query')).toBe(false);
       expect(Object.prototype.hasOwnProperty.call(messagesOptions, 'query')).toBe(false);
     }
+  });
+
+  it('projects provider payloads to labels and drops secret fields', async () => {
+    const mocks = createClient();
+    mocks.providerList.mockResolvedValue({
+      data: {
+        all: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            key: 'sk-secret',
+            env: ['OPENAI_API_KEY'],
+            options: { apiKey: 'sk-secret' },
+            headers: { Authorization: 'Bearer sk-secret' },
+            api: 'https://api.openai.com',
+            url: 'https://secret.example',
+            npm: '@secret/pkg',
+            models: {
+              'gpt-4': {
+                id: 'gpt-4',
+                name: 'GPT-4',
+                key: 'sk-model',
+                options: { secret: true },
+                headers: { Authorization: 'Bearer sk-secret' },
+                api: 'https://api.openai.com',
+                url: 'https://secret.example',
+              },
+              blank: { id: 'unnamed-model', name: '' },
+            },
+          },
+        ],
+        default: { missing: 'nope', openai: 'gpt-4' },
+        connected: ['openai'],
+      },
+      error: undefined,
+    });
+
+    const result = await executeAllowedAction(mocks.client, { type: 'model.list' });
+    expect(result).toStrictEqual({
+      type: 'model.list',
+      value: {
+        models: [
+          { providerID: 'openai', modelID: 'gpt-4', label: 'GPT-4' },
+          { providerID: 'openai', modelID: 'unnamed-model', label: 'unnamed-model' },
+        ],
+        defaultModel: { providerID: 'openai', modelID: 'gpt-4' },
+      },
+    });
+    const serialized = JSON.stringify(result);
+    for (const forbidden of [
+      'sk-secret',
+      'sk-model',
+      'OPENAI_API_KEY',
+      'Authorization',
+      'api.openai.com',
+      'secret.example',
+      '@secret/pkg',
+      '"key"',
+      '"env"',
+      '"options"',
+      '"headers"',
+      '"api"',
+      '"url"',
+      '"npm"',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+    expect(mocks.providerList).toHaveBeenCalledWith({});
+  });
+
+  it('sends the selected model ref on session.prompt', async () => {
+    const mocks = createClient();
+    const model = { providerID: 'anthropic', modelID: 'claude-test' };
+    await executeAllowedAction(mocks.client, {
+      type: 'session.prompt',
+      sessionID: 's1',
+      text: 'hello',
+      model,
+    });
+    expect(mocks.promptAsync).toHaveBeenCalledWith({
+      path: { id: 's1' },
+      body: {
+        model,
+        parts: [{ type: 'text', text: 'hello' }],
+      },
+    });
+  });
+
+  it('keeps provider.auth denied', () => {
+    expect(isAllowedSdkMethod('provider.auth')).toBe(false);
   });
 
   it('keeps session.list options empty even when a directory is provided', async () => {

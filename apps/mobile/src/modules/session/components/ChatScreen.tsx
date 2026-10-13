@@ -4,8 +4,8 @@ import {
   Button,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,6 +16,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PermissionCard } from '@/modules/session/components/PermissionCard';
 import { useSession } from '@/modules/session/hooks/use-session';
 import type { ChatMessage, PermissionRequest } from '@/modules/session/domain/entities/session';
+
+interface SelectOption {
+  key: string;
+  label: string;
+  selected: boolean;
+}
 
 /** Distance in pixels from the end of the history within which newly arrived
  * content still auto-follows the end. */
@@ -35,27 +41,65 @@ function MessageBubble({ message }: MessageBubbleProps) {
   );
 }
 
-interface ChipButtonProps {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
+interface ChoiceSelectProps {
+  accessibilityLabel: string;
+  optionsLabel: string;
+  closedLabel: string;
+  options: SelectOption[];
+  onSelect: (key: string) => void;
 }
 
 /**
- * Picker chip on the native Pressable: a 44px minimum touch target, explicit
- * selected state for screen readers and sighted users, and explicit light-safe
- * colors that hold regardless of the system color scheme.
+ * Closed select plus a modal option list. Native Pressable keeps a 44px target
+ * and an explicit selected state without a picker dependency.
  */
-function ChipButton({ label, selected, onPress }: ChipButtonProps) {
+function ChoiceSelect({
+  accessibilityLabel,
+  optionsLabel,
+  closedLabel,
+  options,
+  onSelect,
+}: ChoiceSelectProps) {
+  const [open, setOpen] = useState(false);
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={[styles.chip, selected ? styles.chipSelected : styles.chipUnselected]}
-    >
-      <Text style={selected ? styles.chipTextSelected : styles.chipText}>{label}</Text>
-    </Pressable>
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        onPress={() => setOpen(true)}
+        style={styles.selectTrigger}
+      >
+        <Text style={styles.selectTriggerText}>{closedLabel}</Text>
+      </Pressable>
+      <Modal
+        visible={open}
+        transparent
+        animationType="none"
+        onRequestClose={() => setOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View accessibilityLabel={optionsLabel} style={styles.modalSheet}>
+            {options.map((option) => (
+              <Pressable
+                key={option.key}
+                accessibilityRole="button"
+                accessibilityLabel={option.label}
+                accessibilityState={{ selected: option.selected }}
+                onPress={() => {
+                  onSelect(option.key);
+                  setOpen(false);
+                }}
+                style={[styles.option, option.selected ? styles.optionSelected : styles.optionIdle]}
+              >
+                <Text style={option.selected ? styles.optionTextSelected : styles.optionText}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -70,6 +114,8 @@ export function ChatScreen() {
     selectedProjectKey,
     projectSessions,
     selectedSessionId,
+    models,
+    selectedModel,
     messages,
     permissions,
     status,
@@ -77,12 +123,14 @@ export function ChatScreen() {
     error,
     selectProject,
     selectSession,
+    selectModel,
     sendPrompt,
     abort,
     replyToPermission,
   } = useSession();
   const insets = useSafeAreaInsets();
   const [prompt, setPrompt] = useState('');
+  const [projectsOpen, setProjectsOpen] = useState(false);
   const [reduceMotionEnabled, setReduceMotionEnabled] = useState(false);
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
   // Whether the user's scroll position is close enough to the end that newly
@@ -141,8 +189,10 @@ export function ChatScreen() {
   };
 
   const isBusy = status === 'busy';
-  const canSend = prompt.trim().length > 0 && !isBusy && selectedSessionId !== null;
-  const hasProjects = projects.length > 0;
+  const canSend =
+    prompt.trim().length > 0 && !isBusy && selectedSessionId !== null && selectedModel !== null;
+  const selectedSession =
+    projectSessions.find((session) => session.id === selectedSessionId) ?? null;
 
   const handleSend = (): void => {
     if (!canSend) return;
@@ -162,68 +212,85 @@ export function ChatScreen() {
   return (
     <KeyboardAvoidingView behavior="padding" style={styles.keyboardAvoiding}>
       <View
+        testID="chat-screen"
         style={[
           styles.container,
           { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 },
         ]}
       >
-        <Text style={styles.title}>CodeRelay</Text>
-        {hasProjects ? (
-          <>
-            <Text accessibilityRole="header" style={styles.sectionHeading}>
-              Project
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.chipRow}
-              contentContainerStyle={styles.chipRowContent}
-            >
-              {projects.map((project) => (
-                <ChipButton
-                  key={project.key}
-                  label={
-                    project.key === selectedProjectKey
-                      ? `Selected: ${project.label}`
-                      : project.label
-                  }
-                  selected={project.key === selectedProjectKey}
-                  onPress={() => selectProject(project.key)}
-                />
-              ))}
-            </ScrollView>
-          </>
+        <View style={styles.header}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Projects"
+            onPress={() => setProjectsOpen(true)}
+            style={styles.hamburger}
+          >
+            <Text style={styles.hamburgerMark}>☰</Text>
+          </Pressable>
+          <Text style={styles.title}>CodeRelay</Text>
+        </View>
+        <Modal
+          visible={projectsOpen}
+          transparent
+          animationType="none"
+          onRequestClose={() => setProjectsOpen(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View accessibilityLabel="Project list" style={styles.modalSheet}>
+              {projects.map((project) => {
+                const selected = project.key === selectedProjectKey;
+                return (
+                  <Pressable
+                    key={project.key}
+                    accessibilityRole="button"
+                    accessibilityLabel={project.label}
+                    accessibilityState={{ selected }}
+                    onPress={() => {
+                      selectProject(project.key);
+                      setProjectsOpen(false);
+                    }}
+                    style={[styles.option, selected ? styles.optionSelected : styles.optionIdle]}
+                  >
+                    <Text style={selected ? styles.optionTextSelected : styles.optionText}>
+                      {project.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Modal>
+        <ChoiceSelect
+          accessibilityLabel="Session"
+          optionsLabel="Session options"
+          closedLabel={selectedSession?.title ?? 'No sessions'}
+          options={projectSessions.map((session) => ({
+            key: session.id,
+            label: session.title,
+            selected: session.id === selectedSessionId,
+          }))}
+          onSelect={selectSession}
+        />
+        {selectedProjectKey !== null && projectSessions.length === 0 ? (
+          <Text style={styles.hint}>No sessions in this project.</Text>
         ) : null}
-        {hasProjects ? (
-          <>
-            <Text accessibilityRole="header" style={styles.sectionHeading}>
-              Sessions
-            </Text>
-            {projectSessions.length === 0 ? (
-              <Text style={styles.hint}>No sessions in this project.</Text>
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.chipRow}
-                contentContainerStyle={styles.chipRowContent}
-              >
-                {projectSessions.map((session) => (
-                  <ChipButton
-                    key={session.id}
-                    label={
-                      session.id === selectedSessionId
-                        ? `Selected: ${session.title}`
-                        : session.title
-                    }
-                    selected={session.id === selectedSessionId}
-                    onPress={() => selectSession(session.id)}
-                  />
-                ))}
-              </ScrollView>
-            )}
-          </>
-        ) : null}
+        <ChoiceSelect
+          accessibilityLabel="Model"
+          optionsLabel="Model options"
+          closedLabel={selectedModel?.label ?? 'No models'}
+          options={models.map((model) => ({
+            key: `${model.providerID}/${model.modelID}`,
+            label: model.label,
+            selected:
+              selectedModel !== null &&
+              model.providerID === selectedModel.providerID &&
+              model.modelID === selectedModel.modelID,
+          }))}
+          onSelect={(key) => {
+            const model = models.find((row) => `${row.providerID}/${row.modelID}` === key);
+            if (model !== undefined) selectModel(model);
+          }}
+        />
         {isLoading ? <Text style={styles.hint}>Loading sessions…</Text> : null}
         <FlatList
           ref={listRef}
@@ -263,7 +330,7 @@ export function ChatScreen() {
             onChangeText={setPrompt}
             placeholder="Send a prompt"
             placeholderTextColor="#6b7280"
-            editable={!isBusy && selectedSessionId !== null}
+            editable={!isBusy && selectedSessionId !== null && selectedModel !== null}
             multiline
           />
           <Button title="Send" onPress={handleSend} disabled={!canSend} />
@@ -288,51 +355,78 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: '#ffffff',
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  hamburger: {
+    minHeight: 44,
+    minWidth: 44,
+    marginRight: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#6b7280',
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+  },
+  hamburgerMark: {
+    fontSize: 20,
+    color: '#111827',
+  },
   title: {
     fontSize: 20,
     fontWeight: '600',
-    marginBottom: 8,
     color: '#111827',
   },
-  sectionHeading: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
-    marginTop: 4,
-    marginBottom: 4,
-  },
-  chipRow: {
-    flexGrow: 0,
-    marginBottom: 8,
-  },
-  chipRowContent: {
-    alignItems: 'center',
-  },
-  chip: {
+  selectTrigger: {
     minHeight: 44,
-    minWidth: 44,
     justifyContent: 'center',
-    alignItems: 'center',
     paddingHorizontal: 12,
-    marginRight: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#6b7280',
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+  },
+  selectTriggerText: {
+    fontSize: 16,
+    color: '#111827',
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: 'rgba(17, 24, 39, 0.4)',
+  },
+  modalSheet: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 8,
+  },
+  option: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
     marginBottom: 6,
     borderRadius: 8,
     borderWidth: 1,
   },
-  chipUnselected: {
+  optionIdle: {
     backgroundColor: '#ffffff',
     borderColor: '#6b7280',
   },
-  chipSelected: {
+  optionSelected: {
     backgroundColor: '#1d4ed8',
     borderColor: '#1d4ed8',
   },
-  chipText: {
-    fontSize: 14,
+  optionText: {
+    fontSize: 16,
     color: '#111827',
   },
-  chipTextSelected: {
-    fontSize: 14,
+  optionTextSelected: {
+    fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
   },
