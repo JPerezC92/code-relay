@@ -22,6 +22,7 @@ export const ALLOWED_SDK_METHODS = [
   'session.abort',
   'postSessionIdPermissionsPermissionId',
   'provider.list',
+  'config.providers',
 ] as const;
 
 export type AllowedSdkMethod = (typeof ALLOWED_SDK_METHODS)[number];
@@ -54,11 +55,32 @@ export type SessionListOptions = Parameters<SessionApi['list']>[0];
 export type SessionStatusOptions = Parameters<SessionApi['status']>[0];
 export type SessionMessagesOptions = Parameters<SessionApi['messages']>[0];
 export type SessionPromptAsyncOptions = Parameters<SessionApi['promptAsync']>[0];
+
+/**
+ * Local body for `session.promptAsync`. SDK 1.18.31 `SessionPromptAsyncData`
+ * omits `variant`; server 1.18.35 `prompt_async` accepts it. This is not
+ * `SessionPromptData`.
+ */
+interface PromptAsyncVariantBody {
+  model?: {
+    providerID: string;
+    modelID: string;
+  };
+  parts: Array<{ type: 'text'; text: string }>;
+  variant?: string;
+}
+
+interface PromptAsyncVariantCall {
+  path: { id: string };
+  body: PromptAsyncVariantBody;
+  query?: { directory: string };
+}
 export type SessionAbortOptions = Parameters<SessionApi['abort']>[0];
 export type PermissionReplyOptions = Parameters<
   OpencodeClient['postSessionIdPermissionsPermissionId']
 >[0];
 export type ProviderListOptions = Parameters<OpencodeClient['provider']['list']>[0];
+export type ConfigProvidersOptions = Parameters<OpencodeClient['config']['providers']>[0];
 
 /**
  * Minimal SDK response shape accepted at the host boundary. Request and
@@ -73,7 +95,7 @@ export interface OpenCodeSessionApi {
   list(options?: SessionListOptions): Promise<OpenCodeSdkResult>;
   status(options?: SessionStatusOptions): Promise<OpenCodeSdkResult>;
   messages(options: SessionMessagesOptions): Promise<OpenCodeSdkResult>;
-  promptAsync(options: SessionPromptAsyncOptions): Promise<OpenCodeSdkResult>;
+  promptAsync(options: SessionPromptAsyncOptions | PromptAsyncVariantCall): Promise<OpenCodeSdkResult>;
   abort(options: SessionAbortOptions): Promise<OpenCodeSdkResult>;
 }
 
@@ -81,9 +103,14 @@ export interface OpenCodeProviderApi {
   list(options?: ProviderListOptions): Promise<OpenCodeSdkResult>;
 }
 
+export interface OpenCodeConfigApi {
+  providers(options?: ConfigProvidersOptions): Promise<OpenCodeSdkResult>;
+}
+
 export interface OpenCodeClientLike {
   session: OpenCodeSessionApi;
   provider: OpenCodeProviderApi;
+  config: OpenCodeConfigApi;
   postSessionIdPermissionsPermissionId(options: PermissionReplyOptions): Promise<OpenCodeSdkResult>;
 }
 
@@ -103,7 +130,7 @@ export type SdkCallDescriptor =
   | {
       actionType: 'session.prompt';
       sdkMethod: 'session.promptAsync';
-      options: SessionPromptAsyncOptions;
+      options: PromptAsyncVariantCall;
     }
   | { actionType: 'session.abort'; sdkMethod: 'session.abort'; options: SessionAbortOptions }
   | {
@@ -111,7 +138,7 @@ export type SdkCallDescriptor =
       sdkMethod: 'postSessionIdPermissionsPermissionId';
       options: PermissionReplyOptions;
     }
-  | { actionType: 'model.list'; sdkMethod: 'provider.list'; options: ProviderListOptions };
+  | { actionType: 'model.list'; sdkMethod: 'config.providers'; options: ConfigProvidersOptions };
 
 const ALLOWED_ACTION_TYPE_SET: ReadonlySet<string> = new Set(ALLOWED_ACTION_TYPES);
 const ALLOWED_SDK_METHOD_SET: ReadonlySet<string> = new Set(ALLOWED_SDK_METHODS);
@@ -171,14 +198,7 @@ export function toSdkCall(action: Action, directory?: string): SdkCallDescriptor
       return {
         actionType: action.type,
         sdkMethod: 'session.promptAsync',
-        options: {
-          path: { id: action.sessionID },
-          body: {
-            model: { providerID: action.model.providerID, modelID: action.model.modelID },
-            parts: [{ type: 'text', text: action.text }],
-          },
-          ...(isHostDirectory(directory) ? { query: { directory } } : {}),
-        },
+        options: toPromptAsyncCall(action, directory),
       };
     case 'session.abort':
       return {
@@ -207,7 +227,7 @@ export function toSdkCall(action: Action, directory?: string): SdkCallDescriptor
       };
     }
     case 'model.list':
-      return { actionType: action.type, sdkMethod: 'provider.list', options: {} };
+      return { actionType: action.type, sdkMethod: 'config.providers', options: {} };
   }
 }
 
@@ -228,8 +248,8 @@ async function invokeSdkCall(
       return client.session.abort(call.options);
     case 'postSessionIdPermissionsPermissionId':
       return client.postSessionIdPermissionsPermissionId(call.options);
-    case 'provider.list':
-      return client.provider.list(call.options);
+    case 'config.providers':
+      return client.config.providers(call.options);
   }
 }
 
@@ -282,18 +302,49 @@ interface ProjectedModel {
   providerID: string;
   modelID: string;
   label: string;
+  variants: string[];
 }
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-function readModelObjects(models: unknown): Array<{ id: string; name: unknown }> {
+function readVariantIds(variants: unknown): string[] {
+  if (Array.isArray(variants)) {
+    return variants.flatMap((entry) => {
+      if (!isUnknownRecord(entry) || !isNonEmptyString(entry['id'])) return [];
+      return [entry['id']];
+    });
+  }
+  if (isUnknownRecord(variants)) {
+    return Object.keys(variants).filter((id) => id.length > 0);
+  }
+  return [];
+}
+
+function readModelObjects(
+  models: unknown,
+): Array<{ id: string; name: unknown; variants: string[] }> {
   const entries = Array.isArray(models) ? models : isUnknownRecord(models) ? Object.values(models) : [];
   return entries.flatMap((model) => {
     if (!isUnknownRecord(model) || !isNonEmptyString(model['id'])) return [];
-    return [{ id: model['id'], name: model['name'] }];
+    return [{ id: model['id'], name: model['name'], variants: readVariantIds(model['variants']) }];
   });
+}
+
+function toPromptAsyncCall(action: Extract<Action, { type: 'session.prompt' }>, directory?: string): PromptAsyncVariantCall {
+  const body: PromptAsyncVariantBody = {
+    model: { providerID: action.model.providerID, modelID: action.model.modelID },
+    parts: [{ type: 'text', text: action.text }],
+  };
+  if (isNonEmptyString(action.model.variant)) {
+    body.variant = action.model.variant;
+  }
+  return {
+    path: { id: action.sessionID },
+    body,
+    ...(isHostDirectory(directory) ? { query: { directory } } : {}),
+  };
 }
 
 function projectModels(
@@ -302,7 +353,7 @@ function projectModels(
   if (!isUnknownRecord(data)) {
     return new AllowlistError('OpenCode provider list result must include a provider array');
   }
-  const providers = data['providers'] ?? data['all'];
+  const providers = data['providers'];
   if (!Array.isArray(providers)) {
     return new AllowlistError('OpenCode provider list result must include a provider array');
   }
@@ -316,6 +367,7 @@ function projectModels(
         providerID,
         modelID: model.id,
         label: isNonEmptyString(model.name) ? model.name : model.id,
+        variants: model.variants,
       });
     }
   }

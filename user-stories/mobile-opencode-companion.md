@@ -28,7 +28,11 @@
 - ✅ Automated protocol, plugin, and mobile tests plus a physical Android checklist cover pairing, reconnect, endpoint switching, permission safety, QR expiry, revocation, and failure behavior. (Tests pass under turbo; the phase-05 gate recorded every checklist result 2026-09-21 — reconnect and live sync device-confirmed; permission cards, QR expiry, endpoint switching, and on-device revocation recorded as accepted debts `DEBT-002`/`DEBT-005`/`DEBT-006`/`DEBT-007`, never silently skipped)
 - ✅ The project list opens from a hamburger menu. Choosing a project still selects it, including a project with no root sessions, and host paths stay hidden. (ChatScreen hamburger tests passed 2026-10-13; mobile 37/37)
 - ✅ Sessions for the selected project are chosen from a select on the main page, latest first, and that session still drives messages, send, and abort. (Newest-first fixture asserted; reselecting the current session does not clear messages)
-- ✅ The app lists host models and the selected model is sent on the next prompt. Provider secrets are not shown. (Plugin 158/158; projection test drops key, options, env, headers, and URLs)
+- ✅ The app lists only models from the host configured-provider set (`config.providers`), and the selected model is sent on the next prompt. Provider secrets are not shown. Catalog-only ids such as `nano-gpt/deepseek-reasoner` are not listed. (plugin 163/163; live `config.providers` equals `opencode models`, 109/109, no `nano-gpt`)
+- ✅ Opening the model select does not mount every row first, and the open list scrolls inside a bounded virtualized sheet. (ChatScreen test: row absent before open; FlatList max-height; mobile 18/18)
+- ✅ Each open model row shows the provider id under the model name. Session rows do not. (ChatScreen test asserts provider id under GPT 5; mobile 18/18)
+- ✅ The open model sheet has a search field that filters rows by name or provider id. The session sheet does not. (ChatScreen test: query hides non-match; Session has no Search models; mobile 18/18)
+- ✅ A separate Variant select lists the selected model's variant ids, and the chosen id is sent with the prompt. Models with no variants omit it. (plugin projects ids only; mobile prompt includes chosen id and omits it when empty; plugin 163/163, mobile 18/18)
 
 ## Change log
 
@@ -43,6 +47,7 @@
  - 2026-09-21 — mobile-opencode-companion-20260918: plan completion reconciliation — all five acceptance criteria dispositioned with evidence; the physical checklist closed with reconnect and live sync device-confirmed and four accepted debts (`DEBT-002` on-device revocation, `DEBT-005` live permission-card delivery, `DEBT-006` QR expiry walk, `DEBT-007` endpoint switching) recorded at the user's direction; plan archived to `plans/.completed/` with its tracked deletions staged into the completing release PR.
 - 2026-10-11 — qr-pairing-modal-fit-20261011: the pairing QR stays one cell per module, shrinks its quiet zone to fit, and falls back to the endpoint URL when the matrix cannot fit; the modal uses the smallest dialog tier that fits that QR, and Esc clears the dialog, stops polling, and drops the payload.
 - 2026-10-13 — chat-nav-model-select-20261013: extend the project-first picker chrome. Projects move to a hamburger menu, sessions move to a latest-first select, and a host model select is added. Project-then-root-session selection is unchanged.
+- 2026-10-13 — model-picker-connected-20261013: the host-model list is SDK `config.providers`, not `connected` and not the full `all` catalog. `nano-gpt/deepseek-reasoner` is a rejected catalog id. The same plan also requires the model sheet to open without mounting every row, to scroll in a bounded virtualized list, to show the provider id under the name, to filter that sheet by name or provider id, and to offer a separate Variant select whose chosen id is sent with the prompt. The session sheet has no search field.
 
 ## Resolved decisions
 
@@ -54,3 +59,9 @@
 - 2026-09-20 — Project-first navigation: `parentID` absent defines a root/main session for the picker; host project/directory routing stays private and no mobile action accepts a filesystem path.
 - 2026-09-20 — Empty projects and visual accessibility: the host returns a mobile-safe project list separately from root summaries so zero-root projects can show an empty state; the mobile surface uses an explicit light appearance and accessible picker affordances.
 - 2026-10-13 — Navigation chrome: hamburger for projects and a latest-first session select replace the horizontal chip rows. Model choice is a projected `{ providerID, modelID, label }` list; provider secrets stay on the host.
+- 2026-10-13 — Retracted: the host-model list is not SDK `connected`. Keep this story. The list is `config.providers`. Do not add a second story and do not call the op-model skill from the app.
+- 2026-10-13 — Model sheet: fold the open-speed and scroll work into `model-picker-connected-20261013` instead of a second plan.
+- 2026-10-13 — Model row: show the provider id under the name in the open sheet only.
+- 2026-10-13 — Model list source: `config.providers`, not the connected catalog. `nano-gpt/deepseek-reasoner` is a rejected catalog id.
+- 2026-10-13 — Model search: the open model sheet filters by name or provider id. The session sheet does not.
+- 2026-10-13 — Variant select: a separate control lists variant ids and the prompt sends the chosen id. Variant bodies and headers stay on the host.

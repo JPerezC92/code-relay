@@ -42,6 +42,9 @@ function createClient() {
     provider: {
       list: async () => ({ data: { providers: [], default: {} } }),
     },
+    config: {
+      providers: async () => ({ data: { providers: [], default: {} } }),
+    },
     postSessionIdPermissionsPermissionId,
   };
   return {

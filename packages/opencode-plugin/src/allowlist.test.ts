@@ -48,9 +48,14 @@ function createClient() {
     data: { all: [] },
     error: undefined,
   }));
+  const configProviders = vi.fn(async (): Promise<OpenCodeSdkResult> => ({
+    data: { providers: [] },
+    error: undefined,
+  }));
   const client: OpenCodeClientLike = {
     session: { list, status, messages, promptAsync, abort },
     provider: { list: providerList },
+    config: { providers: configProviders },
     postSessionIdPermissionsPermissionId,
   };
   return {
@@ -62,6 +67,7 @@ function createClient() {
     abort,
     postSessionIdPermissionsPermissionId,
     providerList,
+    configProviders,
   };
 }
 
@@ -74,6 +80,7 @@ describe('allowlist', () => {
     expect(isAllowedSdkMethod('session.abort')).toBe(true);
     expect(isAllowedSdkMethod('postSessionIdPermissionsPermissionId')).toBe(true);
     expect(isAllowedSdkMethod('provider.list')).toBe(true);
+    expect(isAllowedSdkMethod('config.providers')).toBe(true);
   });
 
   it('denies shell, file, and auth SDK methods', () => {
@@ -474,9 +481,9 @@ describe('allowlist', () => {
 
   it('projects provider payloads to labels and drops secret fields', async () => {
     const mocks = createClient();
-    mocks.providerList.mockResolvedValue({
+    mocks.configProviders.mockResolvedValue({
       data: {
-        all: [
+        providers: [
           {
             id: 'openai',
             name: 'OpenAI',
@@ -496,13 +503,20 @@ describe('allowlist', () => {
                 headers: { Authorization: 'Bearer sk-secret' },
                 api: 'https://api.openai.com',
                 url: 'https://secret.example',
+                variants: {
+                  low: {
+                    body: { reasoning: 'secret-variant-body' },
+                    headers: { Authorization: 'Bearer sk-variant' },
+                    options: { secret: 'variant-option' },
+                  },
+                  high: { name: 'High' },
+                },
               },
-              blank: { id: 'unnamed-model', name: '' },
+              blank: { id: 'unnamed-model', name: '', variants: 'not-a-map' },
             },
           },
         ],
         default: { missing: 'nope', openai: 'gpt-4' },
-        connected: ['openai'],
       },
       error: undefined,
     });
@@ -512,8 +526,8 @@ describe('allowlist', () => {
       type: 'model.list',
       value: {
         models: [
-          { providerID: 'openai', modelID: 'gpt-4', label: 'GPT-4' },
-          { providerID: 'openai', modelID: 'unnamed-model', label: 'unnamed-model' },
+          { providerID: 'openai', modelID: 'gpt-4', label: 'GPT-4', variants: ['low', 'high'] },
+          { providerID: 'openai', modelID: 'unnamed-model', label: 'unnamed-model', variants: [] },
         ],
         defaultModel: { providerID: 'openai', modelID: 'gpt-4' },
       },
@@ -534,10 +548,137 @@ describe('allowlist', () => {
       '"api"',
       '"url"',
       '"npm"',
+      'secret-variant-body',
+      'sk-variant',
+      'variant-option',
+      '"body"',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
-    expect(mocks.providerList).toHaveBeenCalledWith({});
+    expect(mocks.configProviders).toHaveBeenCalledWith({});
+    expect(mocks.providerList).not.toHaveBeenCalled();
+    expect(serialized).not.toContain('anthropic');
+    expect(serialized).not.toContain('claude-secret');
+  });
+
+  it('returns AllowlistError when the provider list omits providers', async () => {
+    const mocks = createClient();
+    mocks.configProviders.mockResolvedValue({
+      data: {
+        all: [{ id: 'openai', models: { 'gpt-4': { id: 'gpt-4', name: 'GPT-4' } } }],
+        default: { openai: 'gpt-4' },
+      },
+      error: undefined,
+    });
+
+    const result = await executeAllowedAction(mocks.client, { type: 'model.list' });
+    expect(result).toBeInstanceOf(AllowlistError);
+    if (result instanceof AllowlistError) {
+      expect(result.message).toBe('OpenCode provider list result must include a provider array');
+    }
+    expect(mocks.configProviders).toHaveBeenCalledWith({});
+    expect(mocks.providerList).not.toHaveBeenCalled();
+  });
+
+  it('projects only configured providers and ignores catalog-only models', async () => {
+    const mocks = createClient();
+    mocks.configProviders.mockResolvedValue({
+      data: {
+        all: [
+          {
+            id: 'nano-gpt',
+            models: { 'deepseek-reasoner': { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner' } },
+          },
+        ],
+        providers: [
+          {
+            id: 'openai',
+            models: { 'gpt-4': { id: 'gpt-4', name: 'GPT-4' } },
+          },
+        ],
+        default: { openai: 'gpt-4' },
+      },
+      error: undefined,
+    });
+
+    const result = await executeAllowedAction(mocks.client, { type: 'model.list' });
+    expect(result).toStrictEqual({
+      type: 'model.list',
+      value: {
+        models: [{ providerID: 'openai', modelID: 'gpt-4', label: 'GPT-4', variants: [] }],
+        defaultModel: { providerID: 'openai', modelID: 'gpt-4' },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('nano-gpt');
+    expect(JSON.stringify(result)).not.toContain('deepseek-reasoner');
+    expect(mocks.configProviders).toHaveBeenCalledWith({});
+    expect(mocks.providerList).not.toHaveBeenCalled();
+  });
+
+  it('sets defaultModel to null when the default pair is absent from providers', async () => {
+    const mocks = createClient();
+    mocks.configProviders.mockResolvedValue({
+      data: {
+        providers: [
+          {
+            id: 'openai',
+            models: { 'gpt-4': { id: 'gpt-4', name: 'GPT-4' } },
+          },
+        ],
+        default: { anthropic: 'claude-test' },
+      },
+      error: undefined,
+    });
+
+    await expect(executeAllowedAction(mocks.client, { type: 'model.list' })).resolves.toStrictEqual({
+      type: 'model.list',
+      value: {
+        models: [{ providerID: 'openai', modelID: 'gpt-4', label: 'GPT-4', variants: [] }],
+        defaultModel: null,
+      },
+    });
+    expect(mocks.configProviders).toHaveBeenCalledWith({});
+    expect(mocks.providerList).not.toHaveBeenCalled();
+  });
+
+  it('projects variant ids from object keys and id arrays without variant bodies', async () => {
+    const mocks = createClient();
+    mocks.configProviders.mockResolvedValue({
+      data: {
+        providers: [
+          {
+            id: 'openai',
+            models: [
+              {
+                id: 'gpt-4',
+                name: 'GPT-4',
+                variants: [
+                  { id: 'low', body: { reasoning: 'array-variant-body' }, headers: { x: 'array-variant-header' } },
+                  { id: '', body: { leak: 'empty-id-body' } },
+                  { name: 'no-id', headers: { x: 'no-id-header' } },
+                  { id: 'high' },
+                ],
+              },
+            ],
+          },
+        ],
+        default: {},
+      },
+      error: undefined,
+    });
+
+    const result = await executeAllowedAction(mocks.client, { type: 'model.list' });
+    expect(result).toStrictEqual({
+      type: 'model.list',
+      value: {
+        models: [{ providerID: 'openai', modelID: 'gpt-4', label: 'GPT-4', variants: ['low', 'high'] }],
+        defaultModel: null,
+      },
+    });
+    const serialized = JSON.stringify(result);
+    for (const forbidden of ['array-variant-body', 'array-variant-header', 'empty-id-body', 'no-id-header', '"body"', '"headers"']) {
+      expect(serialized).not.toContain(forbidden);
+    }
   });
 
   it('sends the selected model ref on session.prompt', async () => {
@@ -554,6 +695,25 @@ describe('allowlist', () => {
       body: {
         model,
         parts: [{ type: 'text', text: 'hello' }],
+      },
+    });
+    expect(mocks.promptAsync.mock.calls[0]?.[0]?.body).not.toHaveProperty('variant');
+  });
+
+  it('sends a non-empty variant on the prompt_async body and not on the model', async () => {
+    const mocks = createClient();
+    await executeAllowedAction(mocks.client, {
+      type: 'session.prompt',
+      sessionID: 's1',
+      text: 'hello',
+      model: { providerID: 'anthropic', modelID: 'claude-test', variant: 'high' },
+    });
+    expect(mocks.promptAsync).toHaveBeenCalledWith({
+      path: { id: 's1' },
+      body: {
+        model: { providerID: 'anthropic', modelID: 'claude-test' },
+        parts: [{ type: 'text', text: 'hello' }],
+        variant: 'high',
       },
     });
   });

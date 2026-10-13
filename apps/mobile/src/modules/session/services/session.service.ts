@@ -88,9 +88,20 @@ function readNonEmptyString(record: Record<string, unknown>, key: string): strin
   return value;
 }
 
+function parseVariantIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const ids: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string' || entry.length === 0) continue;
+    ids.push(entry);
+  }
+  return ids;
+}
+
 /**
- * Builds a model row from the phase 1 shape and drops every other field,
- * including a provider `key`, so the UI never sees host catalog extras.
+ * Builds a model row from the projected list shape and drops every other field,
+ * including a provider `key` and any variant body, so the UI never sees host
+ * catalog extras.
  */
 function parseModelChoice(raw: unknown): ModelChoice | null {
   if (!isRecord(raw)) return null;
@@ -98,7 +109,7 @@ function parseModelChoice(raw: unknown): ModelChoice | null {
   const modelID = readNonEmptyString(raw, 'modelID');
   const label = readNonEmptyString(raw, 'label');
   if (providerID === null || modelID === null || label === null) return null;
-  return { providerID, modelID, label };
+  return { providerID, modelID, label, variants: parseVariantIds(raw['variants']) };
 }
 
 function parseModelRef(raw: unknown): ModelRef | null {
@@ -227,11 +238,18 @@ export const sessionService = {
   async sendPrompt(
     sessionID: string,
     text: string,
-    model: ModelRef,
+    model: ModelRef & { variant?: string },
   ): Promise<SessionActionResult | SessionServiceError> {
+    const promptModel: ModelRef & { variant?: string } = {
+      providerID: model.providerID,
+      modelID: model.modelID,
+    };
+    if (typeof model.variant === 'string' && model.variant.length > 0) {
+      promptModel.variant = model.variant;
+    }
     try {
       const outcome = await runExclusive(() =>
-        gateway.sendAction({ type: 'session.prompt', sessionID, text, model }),
+        gateway.sendAction({ type: 'session.prompt', sessionID, text, model: promptModel }),
       );
       if (outcome instanceof GatewayClientError) {
         return new SessionServiceError(outcome.message);
