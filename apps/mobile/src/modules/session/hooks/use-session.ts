@@ -25,12 +25,14 @@ export interface UseSessionResult {
   permissions: PermissionRequest[];
   models: ModelChoice[];
   selectedModel: ModelChoice | null;
+  selectedVariant: string | null;
   status: SessionStatus;
   isLoading: boolean;
   error: string | null;
   selectProject: (key: string) => void;
   selectSession: (sessionID: string) => void;
   selectModel: (model: ModelRef) => void;
+  selectVariant: (variantID: string) => void;
   sendPrompt: (text: string) => Promise<void>;
   abort: () => Promise<void>;
   replyToPermission: (permissionID: string, decision: PermissionDecision) => Promise<void>;
@@ -39,6 +41,12 @@ export interface UseSessionResult {
 
 function sameModel(left: ModelRef, right: ModelRef): boolean {
   return left.providerID === right.providerID && left.modelID === right.modelID;
+}
+
+function firstVariant(model: ModelChoice | null): string | null {
+  if (model === null) return null;
+  const first = model.variants[0];
+  return first === undefined || first.length === 0 ? null : first;
 }
 
 /**
@@ -148,14 +156,17 @@ export function useSession(): UseSessionResult {
   const [permissions, setPermissions] = useState<PermissionRequest[]>([]);
   const [models, setModels] = useState<ModelChoice[]>([]);
   const [selectedModel, setSelectedModel] = useState<ModelChoice | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const selectedSessionIdRef = useRef<string | null>(null);
   const selectedModelRef = useRef<ModelChoice | null>(null);
+  const selectedVariantRef = useRef<string | null>(null);
   const modelsRef = useRef<ModelChoice[]>([]);
   selectedModelRef.current = selectedModel;
+  selectedVariantRef.current = selectedVariant;
   modelsRef.current = models;
 
   useEffect(() => {
@@ -249,13 +260,26 @@ export function useSession(): UseSessionResult {
       if (modelsResult instanceof SessionServiceError) {
         setModels([]);
         setSelectedModel(null);
+        setSelectedVariant(null);
         setError(modelsResult.message);
         return;
       }
-      setModels(modelsResult.models);
-      setSelectedModel((current) =>
-        resolveSelectedModel(modelsResult.models, modelsResult.defaultModel, current),
+      const nextModel = resolveSelectedModel(
+        modelsResult.models,
+        modelsResult.defaultModel,
+        selectedModelRef.current,
       );
+      setModels(modelsResult.models);
+      setSelectedModel(nextModel);
+      setSelectedVariant((currentVariant) => {
+        if (nextModel === null) return null;
+        const kept =
+          selectedModelRef.current !== null && sameModel(selectedModelRef.current, nextModel);
+        if (kept && currentVariant !== null && nextModel.variants.includes(currentVariant)) {
+          return currentVariant;
+        }
+        return firstVariant(nextModel);
+      });
     },
     [applyEvents],
   );
@@ -337,6 +361,13 @@ export function useSession(): UseSessionResult {
     const match = modelsRef.current.find((row) => sameModel(row, model));
     if (match === undefined) return;
     setSelectedModel(match);
+    setSelectedVariant(firstVariant(match));
+  }, []);
+
+  const selectVariant = useCallback((variantID: string): void => {
+    const model = selectedModelRef.current;
+    if (model === null || !model.variants.includes(variantID)) return;
+    setSelectedVariant(variantID);
   }, []);
 
   const sendPrompt = useCallback(
@@ -347,10 +378,15 @@ export function useSession(): UseSessionResult {
       const trimmed = text.trim();
       if (trimmed.length === 0) return;
       setStatus('busy');
-      const result = await sessionService.sendPrompt(sessionID, trimmed, {
+      const variant = selectedVariantRef.current;
+      const promptModel: ModelRef & { variant?: string } = {
         providerID: model.providerID,
         modelID: model.modelID,
-      });
+      };
+      if (variant !== null && variant.length > 0 && model.variants.includes(variant)) {
+        promptModel.variant = variant;
+      }
+      const result = await sessionService.sendPrompt(sessionID, trimmed, promptModel);
       if (result instanceof SessionServiceError) {
         setError(result.message);
         setStatus('idle');
@@ -407,12 +443,14 @@ export function useSession(): UseSessionResult {
     permissions,
     models,
     selectedModel,
+    selectedVariant,
     status,
     isLoading,
     error,
     selectProject,
     selectSession,
     selectModel,
+    selectVariant,
     sendPrompt,
     abort,
     replyToPermission,

@@ -20,7 +20,7 @@ const mockFetchMessages = jest.fn<Promise<SessionPollResult | SessionServiceErro
 const mockListModels = jest.fn<Promise<ModelListResult | SessionServiceError>, []>();
 const mockSendPrompt = jest.fn<
   Promise<SessionActionResult | SessionServiceError>,
-  [string, string, { providerID: string; modelID: string }]
+  [string, string, { providerID: string; modelID: string; variant?: string }]
 >();
 const mockAbort = jest.fn<Promise<SessionActionResult | SessionServiceError>, [string]>();
 const mockReplyToPermission = jest.fn<
@@ -36,7 +36,7 @@ jest.mock('@/modules/session/services/session.service', () => ({
     sendPrompt: (
       sessionID: string,
       text: string,
-      model: { providerID: string; modelID: string },
+      model: { providerID: string; modelID: string; variant?: string },
     ) => mockSendPrompt(sessionID, text, model),
     abort: (sessionID: string) => mockAbort(sessionID),
     replyToPermission: (sessionID: string, permissionID: string, decision: 'once' | 'reject') =>
@@ -79,12 +79,21 @@ const DEFAULT_MODEL: ModelChoice = {
   providerID: 'opencode',
   modelID: 'big-pickle',
   label: 'Big Pickle',
+  variants: [],
 };
 
 const ALT_MODEL: ModelChoice = {
   providerID: 'openai',
   modelID: 'gpt-5',
   label: 'GPT 5',
+  variants: [],
+};
+
+const VARIANT_MODEL: ModelChoice = {
+  providerID: 'anthropic',
+  modelID: 'claude-test',
+  label: 'Claude Test',
+  variants: ['low', 'high'],
 };
 
 const SESSION_ID = 'session-1';
@@ -280,9 +289,15 @@ describe('ChatScreen', () => {
     await render(<ChatScreen />);
     await screen.findByText('Hello host');
     expect(screen.getByText('Big Pickle')).toBeTruthy();
+    expect(screen.queryByLabelText('GPT 5')).toBeNull();
 
     await fireEvent.press(screen.getByLabelText('Model'));
+    expect(screen.getByLabelText('GPT 5')).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('Search models'), 'openai');
+    expect(screen.queryByLabelText('Big Pickle')).toBeNull();
+    expect(screen.getByLabelText('GPT 5')).toBeTruthy();
     expect(screen.getByLabelText('GPT 5').props.accessibilityState).toEqual({ selected: false });
+    expect(within(screen.getByLabelText('GPT 5')).getByText(ALT_MODEL.providerID)).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('GPT 5'));
 
     await fireEvent.changeText(screen.getByPlaceholderText('Send a prompt'), 'Use the other model');
@@ -294,6 +309,61 @@ describe('ChatScreen', () => {
         modelID: ALT_MODEL.modelID,
       }),
     );
+
+    await fireEvent.press(screen.getByLabelText('Session'));
+    expect(screen.queryByLabelText('Search models')).toBeNull();
+  });
+
+  it('shows variant ids in a separate select and sends the chosen id', async () => {
+    mockListModels.mockResolvedValue({
+      models: [VARIANT_MODEL, { ...ALT_MODEL, variants: [] }],
+      defaultModel: { providerID: VARIANT_MODEL.providerID, modelID: VARIANT_MODEL.modelID },
+    });
+
+    await render(<ChatScreen />);
+    await screen.findByText('Hello host');
+    expect(screen.queryByText('None')).toBeNull();
+    expect(within(screen.getByLabelText('Variant')).getByText('low')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('Variant'));
+    expect(screen.getByLabelText('Variant options')).toBeTruthy();
+    expect(screen.getByLabelText('low')).toBeTruthy();
+    expect(screen.getByLabelText('high')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('high'));
+
+    await fireEvent.changeText(screen.getByPlaceholderText('Send a prompt'), 'Use the high variant');
+    await fireEvent.press(screen.getByText('Send'));
+
+    await waitFor(() =>
+      expect(mockSendPrompt).toHaveBeenCalledWith(SESSION_ID, 'Use the high variant', {
+        providerID: VARIANT_MODEL.providerID,
+        modelID: VARIANT_MODEL.modelID,
+        variant: 'high',
+      }),
+    );
+  });
+
+  it('omits variant when the selected model has an empty variants array', async () => {
+    mockListModels.mockResolvedValue({
+      models: [{ ...DEFAULT_MODEL, variants: [] }],
+      defaultModel: { providerID: DEFAULT_MODEL.providerID, modelID: DEFAULT_MODEL.modelID },
+    });
+
+    await render(<ChatScreen />);
+    await screen.findByText('Hello host');
+    expect(within(screen.getByLabelText('Variant')).getByText('None')).toBeTruthy();
+
+    await fireEvent.changeText(screen.getByPlaceholderText('Send a prompt'), 'No variant');
+    await fireEvent.press(screen.getByText('Send'));
+
+    await waitFor(() =>
+      expect(mockSendPrompt).toHaveBeenCalledWith(SESSION_ID, 'No variant', {
+        providerID: DEFAULT_MODEL.providerID,
+        modelID: DEFAULT_MODEL.modelID,
+      }),
+    );
+    const sentModel = mockSendPrompt.mock.calls[0]?.[2];
+    expect(sentModel).not.toHaveProperty('variant');
   });
 
   it('shows the abort control while busy and hides it after aborting', async () => {

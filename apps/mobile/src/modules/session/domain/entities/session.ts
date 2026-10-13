@@ -48,11 +48,12 @@ export interface SessionActionResult {
 /** Host session activity as shown by the chat screen. */
 export type SessionStatus = 'idle' | 'busy';
 
-/** A listed host model. Only these three fields leave the service. */
+/** A listed host model. Only these fields leave the service. */
 export interface ModelChoice {
   providerID: string;
   modelID: string;
   label: string;
+  variants: string[];
 }
 
 /**

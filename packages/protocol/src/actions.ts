@@ -27,6 +27,7 @@ const sessionPromptActionSchema = z.strictObject({
   model: z.strictObject({
     providerID: z.string().min(1),
     modelID: z.string().min(1),
+    variant: z.string().min(1).optional(),
   }),
 });
 

@@ -21,6 +21,7 @@ interface SelectOption {
   key: string;
   label: string;
   selected: boolean;
+  detail?: string;
 }
 
 /** Distance in pixels from the end of the history within which newly arrived
@@ -47,6 +48,7 @@ interface ChoiceSelectProps {
   closedLabel: string;
   options: SelectOption[];
   onSelect: (key: string) => void;
+  searchable?: boolean;
 }
 
 /**
@@ -59,8 +61,27 @@ function ChoiceSelect({
   closedLabel,
   options,
   onSelect,
+  searchable = false,
 }: ChoiceSelectProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleOptions =
+    !searchable || normalizedQuery.length === 0
+      ? options
+      : options.filter((option) => {
+          const labelMatches = option.label.toLowerCase().includes(normalizedQuery);
+          const detailMatches =
+            typeof option.detail === 'string' &&
+            option.detail.toLowerCase().includes(normalizedQuery);
+          return labelMatches || detailMatches;
+        });
+
+  const closeSheet = (): void => {
+    setQuery('');
+    setOpen(false);
+  };
+
   return (
     <>
       <Pressable
@@ -71,34 +92,63 @@ function ChoiceSelect({
       >
         <Text style={styles.selectTriggerText}>{closedLabel}</Text>
       </Pressable>
-      <Modal
-        visible={open}
-        transparent
-        animationType="none"
-        onRequestClose={() => setOpen(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View accessibilityLabel={optionsLabel} style={styles.modalSheet}>
-            {options.map((option) => (
-              <Pressable
-                key={option.key}
-                accessibilityRole="button"
-                accessibilityLabel={option.label}
-                accessibilityState={{ selected: option.selected }}
-                onPress={() => {
-                  onSelect(option.key);
-                  setOpen(false);
-                }}
-                style={[styles.option, option.selected ? styles.optionSelected : styles.optionIdle]}
-              >
-                <Text style={option.selected ? styles.optionTextSelected : styles.optionText}>
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
+      {open ? (
+        <Modal visible={open} transparent animationType="none" onRequestClose={closeSheet}>
+          <View style={styles.modalBackdrop}>
+            <View
+              accessibilityLabel={optionsLabel}
+              style={[styles.modalSheet, styles.choiceSheet]}
+            >
+              {searchable ? (
+                <TextInput
+                  accessibilityLabel="Search models"
+                  placeholder="Search models"
+                  autoCapitalize="none"
+                  value={query}
+                  onChangeText={setQuery}
+                  style={styles.searchInput}
+                />
+              ) : null}
+              <FlatList
+                data={visibleOptions}
+                keyExtractor={(option) => option.key}
+                keyboardShouldPersistTaps="handled"
+                initialNumToRender={12}
+                windowSize={5}
+                getItemLayout={(_data, index) => ({ length: 68, offset: 68 * index, index })}
+                renderItem={({ item: option }) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={option.label}
+                    accessibilityState={{ selected: option.selected }}
+                    onPress={() => {
+                      onSelect(option.key);
+                      closeSheet();
+                    }}
+                    style={[
+                      styles.option,
+                      option.selected ? styles.optionSelected : styles.optionIdle,
+                    ]}
+                  >
+                    <Text style={option.selected ? styles.optionTextSelected : styles.optionText}>
+                      {option.label}
+                    </Text>
+                    {typeof option.detail === 'string' && option.detail.length > 0 ? (
+                      <Text
+                        style={
+                          option.selected ? styles.optionDetailSelected : styles.optionDetail
+                        }
+                      >
+                        {option.detail}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                )}
+              />
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      ) : null}
     </>
   );
 }
@@ -116,6 +166,7 @@ export function ChatScreen() {
     selectedSessionId,
     models,
     selectedModel,
+    selectedVariant,
     messages,
     permissions,
     status,
@@ -124,6 +175,7 @@ export function ChatScreen() {
     selectProject,
     selectSession,
     selectModel,
+    selectVariant,
     sendPrompt,
     abort,
     replyToPermission,
@@ -281,15 +333,28 @@ export function ChatScreen() {
           options={models.map((model) => ({
             key: `${model.providerID}/${model.modelID}`,
             label: model.label,
+            detail: model.providerID,
             selected:
               selectedModel !== null &&
               model.providerID === selectedModel.providerID &&
               model.modelID === selectedModel.modelID,
           }))}
+          searchable
           onSelect={(key) => {
             const model = models.find((row) => `${row.providerID}/${row.modelID}` === key);
             if (model !== undefined) selectModel(model);
           }}
+        />
+        <ChoiceSelect
+          accessibilityLabel="Variant"
+          optionsLabel="Variant options"
+          closedLabel={selectedVariant ?? 'None'}
+          options={(selectedModel?.variants ?? []).map((variantID) => ({
+            key: variantID,
+            label: variantID,
+            selected: variantID === selectedVariant,
+          }))}
+          onSelect={selectVariant}
         />
         {isLoading ? <Text style={styles.hint}>Loading sessions…</Text> : null}
         <FlatList
@@ -394,6 +459,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
   },
+  searchInput: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 8,
+    backgroundColor: '#ffffff',
+    color: '#111827',
+  },
   modalBackdrop: {
     flex: 1,
     justifyContent: 'center',
@@ -405,8 +481,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 8,
   },
+  choiceSheet: {
+    maxHeight: '70%',
+  },
   option: {
-    minHeight: 44,
+    minHeight: 62,
     justifyContent: 'center',
     paddingHorizontal: 12,
     marginBottom: 6,
@@ -429,6 +508,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  optionDetail: {
+    fontSize: 12,
+    color: '#4b5563',
+  },
+  optionDetailSelected: {
+    fontSize: 12,
+    color: '#dbeafe',
   },
   list: {
     flex: 1,

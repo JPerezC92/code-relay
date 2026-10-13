@@ -93,6 +93,14 @@ function createClient(): { client: FakeClient; calls: { list: number; messages: 
         response: {},
       }),
     },
+    config: {
+      providers: async () => ({
+        data: { providers: [], default: {} },
+        error: undefined,
+        request: {},
+        response: {},
+      }),
+    },
     postSessionIdPermissionsPermissionId: async () => ({
       data: true,
       error: undefined,

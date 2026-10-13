@@ -454,6 +454,7 @@ describe('sessionService.listModels', () => {
               env: { OPENAI_API_KEY: 'sk-test' },
               headers: { Authorization: 'Bearer sk-test' },
               urls: { base: 'https://api.openai.com/v1' },
+              variants: ['low', '', 'high', { id: 'nope', body: { secret: 'variant-body' } }],
             },
           ],
           defaultModel: {
@@ -474,18 +475,21 @@ describe('sessionService.listModels', () => {
 
     expect(mockSendAction).toHaveBeenCalledWith({ type: 'model.list' });
     expect(result.models).toStrictEqual([
-      { providerID: 'openai', modelID: 'gpt-5', label: 'GPT 5' },
+      { providerID: 'openai', modelID: 'gpt-5', label: 'GPT 5', variants: ['low', 'high'] },
     ]);
     expect(Object.keys(result.models[0] ?? {}).sort()).toStrictEqual([
       'label',
       'modelID',
       'providerID',
+      'variants',
     ]);
     expect(result.models[0]).not.toHaveProperty('key');
     expect(result.models[0]).not.toHaveProperty('options');
     expect(result.models[0]).not.toHaveProperty('env');
     expect(result.models[0]).not.toHaveProperty('headers');
     expect(result.models[0]).not.toHaveProperty('urls');
+    expect(result.models[0]).not.toHaveProperty('body');
+    expect(JSON.stringify(result.models[0])).not.toContain('variant-body');
     expect(result.defaultModel).toStrictEqual({ providerID: 'openai', modelID: 'gpt-5' });
     expect(Object.keys(result.defaultModel ?? {}).sort()).toStrictEqual(['modelID', 'providerID']);
     expect(result.defaultModel).not.toHaveProperty('key');
@@ -500,7 +504,7 @@ describe('sessionService.listModels', () => {
       result: {
         type: 'model.list',
         value: {
-          models: [{ providerID: 'opencode', modelID: 'big-pickle', label: 'Big Pickle' }],
+          models: [{ providerID: 'opencode', modelID: 'big-pickle', label: 'Big Pickle', variants: [] }],
           defaultModel: null,
         },
       },
@@ -510,7 +514,9 @@ describe('sessionService.listModels', () => {
     const result = expectModelList(await sessionService.listModels());
 
     expect(result.defaultModel).toBeNull();
-    expect(result.models).toHaveLength(1);
+    expect(result.models).toStrictEqual([
+      { providerID: 'opencode', modelID: 'big-pickle', label: 'Big Pickle', variants: [] },
+    ]);
   });
 
   it('returns the strict malformed-model error when the payload is not the phase 1 shape', async () => {
@@ -547,6 +553,39 @@ describe('sessionService.sendPrompt', () => {
       sessionID: 'session-alpha',
       text: 'Review the diff',
       model,
+    });
+    expect(mockSendAction.mock.calls[0]?.[0]?.model).not.toHaveProperty('variant');
+  });
+
+  it('sends a chosen variant and omits an empty one', async () => {
+    mockSendAction.mockResolvedValue({
+      result: { type: 'session.prompt', value: null },
+      events: [],
+    });
+
+    await sessionService.sendPrompt('session-alpha', 'Review the diff', {
+      providerID: 'openai',
+      modelID: 'gpt-5',
+      variant: 'high',
+    });
+    expect(mockSendAction).toHaveBeenCalledWith({
+      type: 'session.prompt',
+      sessionID: 'session-alpha',
+      text: 'Review the diff',
+      model: { providerID: 'openai', modelID: 'gpt-5', variant: 'high' },
+    });
+
+    mockSendAction.mockClear();
+    await sessionService.sendPrompt('session-alpha', 'Review the diff', {
+      providerID: 'openai',
+      modelID: 'gpt-5',
+      variant: '',
+    });
+    expect(mockSendAction).toHaveBeenCalledWith({
+      type: 'session.prompt',
+      sessionID: 'session-alpha',
+      text: 'Review the diff',
+      model: { providerID: 'openai', modelID: 'gpt-5' },
     });
   });
 });
