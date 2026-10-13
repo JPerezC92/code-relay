@@ -44,3 +44,27 @@ export interface SessionPollResult {
 export interface SessionActionResult {
   events: NormalizedEvent[];
 }
+
+/** Host session activity as shown by the chat screen. */
+export type SessionStatus = 'idle' | 'busy';
+
+/** A listed host model. Only these three fields leave the service. */
+export interface ModelChoice {
+  providerID: string;
+  modelID: string;
+  label: string;
+}
+
+/**
+ * A model reference without a label. Host `defaultModel` and `session.prompt`
+ * use this shape; labels stay on `ModelChoice` rows.
+ */
+export interface ModelRef {
+  providerID: string;
+  modelID: string;
+}
+
+export interface ModelListResult {
+  models: ModelChoice[];
+  defaultModel: ModelRef | null;
+}

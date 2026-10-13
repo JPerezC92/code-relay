@@ -9,6 +9,7 @@ export const ALLOWED_ACTION_TYPES = [
   'session.prompt',
   'session.abort',
   'permission.reply',
+  'model.list',
 ] as const;
 
 export type AllowedActionType = (typeof ALLOWED_ACTION_TYPES)[number];
@@ -20,6 +21,7 @@ export const ALLOWED_SDK_METHODS = [
   'session.promptAsync',
   'session.abort',
   'postSessionIdPermissionsPermissionId',
+  'provider.list',
 ] as const;
 
 export type AllowedSdkMethod = (typeof ALLOWED_SDK_METHODS)[number];
@@ -56,6 +58,7 @@ export type SessionAbortOptions = Parameters<SessionApi['abort']>[0];
 export type PermissionReplyOptions = Parameters<
   OpencodeClient['postSessionIdPermissionsPermissionId']
 >[0];
+export type ProviderListOptions = Parameters<OpencodeClient['provider']['list']>[0];
 
 /**
  * Minimal SDK response shape accepted at the host boundary. Request and
@@ -74,8 +77,13 @@ export interface OpenCodeSessionApi {
   abort(options: SessionAbortOptions): Promise<OpenCodeSdkResult>;
 }
 
+export interface OpenCodeProviderApi {
+  list(options?: ProviderListOptions): Promise<OpenCodeSdkResult>;
+}
+
 export interface OpenCodeClientLike {
   session: OpenCodeSessionApi;
+  provider: OpenCodeProviderApi;
   postSessionIdPermissionsPermissionId(options: PermissionReplyOptions): Promise<OpenCodeSdkResult>;
 }
 
@@ -102,7 +110,8 @@ export type SdkCallDescriptor =
       actionType: 'permission.reply';
       sdkMethod: 'postSessionIdPermissionsPermissionId';
       options: PermissionReplyOptions;
-    };
+    }
+  | { actionType: 'model.list'; sdkMethod: 'provider.list'; options: ProviderListOptions };
 
 const ALLOWED_ACTION_TYPE_SET: ReadonlySet<string> = new Set(ALLOWED_ACTION_TYPES);
 const ALLOWED_SDK_METHOD_SET: ReadonlySet<string> = new Set(ALLOWED_SDK_METHODS);
@@ -164,7 +173,10 @@ export function toSdkCall(action: Action, directory?: string): SdkCallDescriptor
         sdkMethod: 'session.promptAsync',
         options: {
           path: { id: action.sessionID },
-          body: { parts: [{ type: 'text', text: action.text }] },
+          body: {
+            model: { providerID: action.model.providerID, modelID: action.model.modelID },
+            parts: [{ type: 'text', text: action.text }],
+          },
           ...(isHostDirectory(directory) ? { query: { directory } } : {}),
         },
       };
@@ -194,6 +206,8 @@ export function toSdkCall(action: Action, directory?: string): SdkCallDescriptor
         },
       };
     }
+    case 'model.list':
+      return { actionType: action.type, sdkMethod: 'provider.list', options: {} };
   }
 }
 
@@ -214,6 +228,8 @@ async function invokeSdkCall(
       return client.session.abort(call.options);
     case 'postSessionIdPermissionsPermissionId':
       return client.postSessionIdPermissionsPermissionId(call.options);
+    case 'provider.list':
+      return client.provider.list(call.options);
   }
 }
 
@@ -262,6 +278,63 @@ function projectStatus(data: unknown): { type?: string } {
   return { type: data['type'] };
 }
 
+interface ProjectedModel {
+  providerID: string;
+  modelID: string;
+  label: string;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function readModelObjects(models: unknown): Array<{ id: string; name: unknown }> {
+  const entries = Array.isArray(models) ? models : isUnknownRecord(models) ? Object.values(models) : [];
+  return entries.flatMap((model) => {
+    if (!isUnknownRecord(model) || !isNonEmptyString(model['id'])) return [];
+    return [{ id: model['id'], name: model['name'] }];
+  });
+}
+
+function projectModels(
+  data: unknown,
+): { models: ProjectedModel[]; defaultModel: { providerID: string; modelID: string } | null } | AllowlistError {
+  if (!isUnknownRecord(data)) {
+    return new AllowlistError('OpenCode provider list result must include a provider array');
+  }
+  const providers = data['providers'] ?? data['all'];
+  if (!Array.isArray(providers)) {
+    return new AllowlistError('OpenCode provider list result must include a provider array');
+  }
+
+  const models: ProjectedModel[] = [];
+  for (const provider of providers) {
+    if (!isUnknownRecord(provider) || !isNonEmptyString(provider['id'])) continue;
+    const providerID = provider['id'];
+    for (const model of readModelObjects(provider['models'])) {
+      models.push({
+        providerID,
+        modelID: model.id,
+        label: isNonEmptyString(model.name) ? model.name : model.id,
+      });
+    }
+  }
+
+  const hostDefault = data['default'];
+  let defaultModel: { providerID: string; modelID: string } | null = null;
+  if (isUnknownRecord(hostDefault)) {
+    for (const [providerID, modelID] of Object.entries(hostDefault)) {
+      if (!isNonEmptyString(providerID) || !isNonEmptyString(modelID)) continue;
+      const listed = models.some((model) => model.providerID === providerID && model.modelID === modelID);
+      if (!listed) continue;
+      defaultModel = { providerID, modelID };
+      break;
+    }
+  }
+
+  return { models, defaultModel };
+}
+
 function projectNonListActionResult(
   actionType: Exclude<ActionType, 'session.list'>,
   data: unknown,
@@ -275,6 +348,8 @@ function projectNonListActionResult(
     case 'session.abort':
     case 'permission.reply':
       return null;
+    case 'model.list':
+      return projectModels(data);
   }
 }
 

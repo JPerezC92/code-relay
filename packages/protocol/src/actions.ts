@@ -24,6 +24,10 @@ const sessionPromptActionSchema = z.strictObject({
   type: z.literal('session.prompt'),
   sessionID: z.string().min(1),
   text: z.string().min(1),
+  model: z.strictObject({
+    providerID: z.string().min(1),
+    modelID: z.string().min(1),
+  }),
 });
 
 const sessionAbortActionSchema = z.strictObject({
@@ -38,6 +42,10 @@ const permissionReplyActionSchema = z.strictObject({
   decision: permissionDecisionSchema,
 });
 
+const modelListActionSchema = z.strictObject({
+  type: z.literal('model.list'),
+});
+
 export const actionSchema = z.discriminatedUnion('type', [
   sessionListActionSchema,
   sessionStatusActionSchema,
@@ -45,6 +53,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   sessionPromptActionSchema,
   sessionAbortActionSchema,
   permissionReplyActionSchema,
+  modelListActionSchema,
 ]);
 
 export type Action = z.infer<typeof actionSchema>;

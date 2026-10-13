@@ -1,10 +1,12 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { NormalizedEvent } from '@coderelay/protocol';
 import { AccessibilityInfo, FlatList } from 'react-native';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 import { ChatScreen } from '@/modules/session/components/ChatScreen';
 import type {
   ChatMessage,
+  ModelChoice,
+  ModelListResult,
   ProjectSummary,
   SessionActionResult,
   SessionListResult,
@@ -15,9 +17,10 @@ import { SessionServiceError } from '@/modules/session/domain/errors/session-ser
 
 const mockListSessions = jest.fn<Promise<SessionListResult | SessionServiceError>, []>();
 const mockFetchMessages = jest.fn<Promise<SessionPollResult | SessionServiceError>, [string]>();
+const mockListModels = jest.fn<Promise<ModelListResult | SessionServiceError>, []>();
 const mockSendPrompt = jest.fn<
   Promise<SessionActionResult | SessionServiceError>,
-  [string, string]
+  [string, string, { providerID: string; modelID: string }]
 >();
 const mockAbort = jest.fn<Promise<SessionActionResult | SessionServiceError>, [string]>();
 const mockReplyToPermission = jest.fn<
@@ -28,8 +31,13 @@ const mockReplyToPermission = jest.fn<
 jest.mock('@/modules/session/services/session.service', () => ({
   sessionService: {
     listSessions: () => mockListSessions(),
+    listModels: () => mockListModels(),
     fetchMessages: (sessionID: string) => mockFetchMessages(sessionID),
-    sendPrompt: (sessionID: string, text: string) => mockSendPrompt(sessionID, text),
+    sendPrompt: (
+      sessionID: string,
+      text: string,
+      model: { providerID: string; modelID: string },
+    ) => mockSendPrompt(sessionID, text, model),
     abort: (sessionID: string) => mockAbort(sessionID),
     replyToPermission: (sessionID: string, permissionID: string, decision: 'once' | 'reject') =>
       mockReplyToPermission(sessionID, permissionID, decision),
@@ -66,6 +74,18 @@ const mockScrollToEndCalls: RecordedScroll[] = [];
 // The real FlatList renders for real. RNTL cannot reach the ref the screen
 // hands it, so a prototype spy on scrollToEnd records every call into
 // mockScrollToEndCalls instead of running the native scroll machinery.
+
+const DEFAULT_MODEL: ModelChoice = {
+  providerID: 'opencode',
+  modelID: 'big-pickle',
+  label: 'Big Pickle',
+};
+
+const ALT_MODEL: ModelChoice = {
+  providerID: 'openai',
+  modelID: 'gpt-5',
+  label: 'GPT 5',
+};
 
 const SESSION_ID = 'session-1';
 
@@ -180,6 +200,10 @@ beforeEach(() => {
     ],
     events: [],
   });
+  mockListModels.mockResolvedValue({
+    models: [DEFAULT_MODEL],
+    defaultModel: { providerID: DEFAULT_MODEL.providerID, modelID: DEFAULT_MODEL.modelID },
+  });
   mockFetchMessages.mockResolvedValue({ messages: MESSAGES, events: [] });
   mockSendPrompt.mockResolvedValue({ events: [] });
   mockAbort.mockResolvedValue({ events: [] });
@@ -204,15 +228,12 @@ describe('ChatScreen', () => {
     await render(<ChatScreen />);
     await screen.findByText('Hello host');
 
-    const container = screen.getByText('CodeRelay').parent;
-
-    expect(container).not.toBeNull();
-    if (container === null) {
-      throw new Error('ChatScreen container was not found above the title');
-    }
-
     // Mocked insets (top 24, bottom 48) composed with the base 16px padding.
-    expect(container).toHaveStyle({ padding: 16, paddingTop: 40, paddingBottom: 64 });
+    expect(screen.getByTestId('chat-screen')).toHaveStyle({
+      padding: 16,
+      paddingTop: 40,
+      paddingBottom: 64,
+    });
   });
 
   it('does not render a message that belongs to another session', async () => {
@@ -243,7 +264,35 @@ describe('ChatScreen', () => {
     await fireEvent.press(screen.getByText('Send'));
 
     await waitFor(() =>
-      expect(mockSendPrompt).toHaveBeenCalledWith(SESSION_ID, 'Please summarize the diff'),
+      expect(mockSendPrompt).toHaveBeenCalledWith(SESSION_ID, 'Please summarize the diff', {
+        providerID: DEFAULT_MODEL.providerID,
+        modelID: DEFAULT_MODEL.modelID,
+      }),
+    );
+  });
+
+  it('sends the model chosen from the model select', async () => {
+    mockListModels.mockResolvedValue({
+      models: [DEFAULT_MODEL, ALT_MODEL],
+      defaultModel: { providerID: DEFAULT_MODEL.providerID, modelID: DEFAULT_MODEL.modelID },
+    });
+
+    await render(<ChatScreen />);
+    await screen.findByText('Hello host');
+    expect(screen.getByText('Big Pickle')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('Model'));
+    expect(screen.getByLabelText('GPT 5').props.accessibilityState).toEqual({ selected: false });
+    await fireEvent.press(screen.getByLabelText('GPT 5'));
+
+    await fireEvent.changeText(screen.getByPlaceholderText('Send a prompt'), 'Use the other model');
+    await fireEvent.press(screen.getByText('Send'));
+
+    await waitFor(() =>
+      expect(mockSendPrompt).toHaveBeenCalledWith(SESSION_ID, 'Use the other model', {
+        providerID: ALT_MODEL.providerID,
+        modelID: ALT_MODEL.modelID,
+      }),
     );
   });
 
@@ -281,11 +330,28 @@ describe('ChatScreen', () => {
 
     await render(<ChatScreen />);
 
-    expect(await screen.findByText('Selected: Alpha app')).toBeTruthy();
-    expect(screen.getByText('Beta app')).toBeTruthy();
-    expect(screen.getByText('Selected: Alpha newest session')).toBeTruthy();
-    expect(screen.getByText('Alpha older session')).toBeTruthy();
+    expect(await screen.findByText('Alpha newest session')).toBeTruthy();
     expect(screen.queryByText('Beta newest session')).toBeNull();
+    expect(screen.queryByText('Project')).toBeNull();
+    expect(screen.queryByText('Sessions')).toBeNull();
+    expect(screen.queryByLabelText('Beta app')).toBeNull();
+    expect(screen.queryByLabelText('Project list')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('Projects'));
+
+    expect(screen.getByLabelText('Project list')).toBeTruthy();
+    const alphaProject = screen.getByLabelText('Alpha app');
+    expect(alphaProject.props.accessibilityState).toEqual({ selected: true });
+    expect(screen.getByLabelText('Beta app').props.accessibilityState).toEqual({ selected: false });
+    await fireEvent.press(screen.getByLabelText('Alpha app'));
+
+    await fireEvent.press(screen.getByLabelText('Session'));
+
+    expect(
+      within(screen.getByLabelText('Session options'))
+        .getAllByRole('button')
+        .map((option) => option.props.accessibilityLabel),
+    ).toEqual(['Alpha newest session', 'Alpha older session']);
   });
 
   it('renders only the safe project sessions and never a hidden subagent summary', async () => {
@@ -308,8 +374,9 @@ describe('ChatScreen', () => {
 
     await render(<ChatScreen />);
 
-    expect(await screen.findByText('Selected: Alpha newest session')).toBeTruthy();
-    expect(screen.getByText('Alpha older session')).toBeTruthy();
+    expect(await screen.findByText('Alpha newest session')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Session'));
+    expect(screen.getByLabelText('Alpha older session')).toBeTruthy();
     expect(screen.queryByText('Hidden subagent session')).toBeNull();
   });
 
@@ -348,13 +415,13 @@ describe('ChatScreen', () => {
     expect(screen.getByText('Approve once')).toBeTruthy();
     expect(screen.queryByText('No messages yet.')).toBeNull();
 
-    await fireEvent.press(screen.getByText('Beta app'));
+    await fireEvent.press(screen.getByLabelText('Projects'));
+    await fireEvent.press(screen.getByLabelText('Beta app'));
 
     await waitFor(() => expect(mockFetchMessages).toHaveBeenCalledWith('session-beta-new'));
 
-    expect(screen.getByText('Selected: Beta app')).toBeTruthy();
-    expect(screen.getByText('Selected: Beta newest session')).toBeTruthy();
-    expect(screen.queryByText('Selected: Alpha newest session')).toBeNull();
+    expect(screen.getByText('Beta newest session')).toBeTruthy();
+    expect(screen.queryByText('Alpha newest session')).toBeNull();
     expect(screen.queryByText('Alpha history')).toBeNull();
     expect(screen.queryByText('Edit a file in Alpha')).toBeNull();
     expect(screen.queryByText('Approve once')).toBeNull();
@@ -374,11 +441,16 @@ describe('ChatScreen', () => {
 
     await render(<ChatScreen />);
 
-    expect(await screen.findByText('Selected: Alpha app')).toBeTruthy();
+    expect(await screen.findByText('Alpha newest session')).toBeTruthy();
+    expect(screen.queryByLabelText('Empty app')).toBeNull();
+    expect(screen.queryByLabelText('Project list')).toBeNull();
 
-    await fireEvent.press(screen.getByText('Empty app'));
+    await fireEvent.press(screen.getByLabelText('Projects'));
 
-    expect(screen.getByText('Selected: Empty app')).toBeTruthy();
+    expect(screen.getByLabelText('Project list')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Empty app'));
+
+    expect(screen.getByText('No sessions')).toBeTruthy();
     expect(screen.getByText('No sessions in this project.')).toBeTruthy();
     expect(screen.queryByText('Alpha newest session')).toBeNull();
     expect(screen.getByText('No messages yet.')).toBeTruthy();
@@ -393,20 +465,20 @@ describe('ChatScreen', () => {
 
     await render(<ChatScreen />);
 
-    expect(await screen.findByText('Selected: Alpha app')).toBeTruthy();
-    expect(screen.getByText('Selected: Alpha newest session')).toBeTruthy();
+    expect(await screen.findByText('Alpha newest session')).toBeTruthy();
 
-    await fireEvent.press(screen.getByText('Alpha older session'));
+    await fireEvent.press(screen.getByLabelText('Session'));
+    await fireEvent.press(screen.getByLabelText('Alpha older session'));
 
     await waitFor(() => expect(mockFetchMessages).toHaveBeenCalledWith('session-alpha-old'));
-    expect(screen.getByText('Selected: Alpha older session')).toBeTruthy();
-    expect(screen.queryByText('Selected: Alpha newest session')).toBeNull();
+    expect(screen.getByText('Alpha older session')).toBeTruthy();
+    expect(screen.queryByText('Alpha newest session')).toBeNull();
 
-    await fireEvent.press(screen.getByText('Beta app'));
+    await fireEvent.press(screen.getByLabelText('Projects'));
+    await fireEvent.press(screen.getByLabelText('Beta app'));
 
     await waitFor(() => expect(mockFetchMessages).toHaveBeenCalledWith('session-beta-new'));
-    expect(screen.getByText('Selected: Beta app')).toBeTruthy();
-    expect(screen.getByText('Selected: Beta newest session')).toBeTruthy();
+    expect(screen.getByText('Beta newest session')).toBeTruthy();
   });
 
   it('jumps to the end without animation when the session history loads', async () => {
@@ -510,7 +582,8 @@ describe('ChatScreen', () => {
     // can reach it again.
     await scrollAwayFromEnd();
 
-    await fireEvent.press(screen.getByText('Session two'));
+    await fireEvent.press(screen.getByLabelText('Session'));
+    await fireEvent.press(screen.getByLabelText('Session two'));
 
     expect(await screen.findByText('Second session history')).toBeTruthy();
 

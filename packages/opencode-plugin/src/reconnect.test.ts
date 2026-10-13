@@ -85,6 +85,14 @@ function createClient(): { client: FakeClient; calls: { list: number; messages: 
       promptAsync: async () => ({ data: undefined, error: undefined, request: {}, response: {} }),
       abort: async () => ({ data: true, error: undefined, request: {}, response: {} }),
     },
+    provider: {
+      list: async () => ({
+        data: { providers: [], default: {} },
+        error: undefined,
+        request: {},
+        response: {},
+      }),
+    },
     postSessionIdPermissionsPermissionId: async () => ({
       data: true,
       error: undefined,

@@ -483,6 +483,11 @@ export class CodeRelayGateway {
       }
       return { type: 'session.list', value: summaries };
     }
+    if (action.type === 'model.list') {
+      const executed = await executeAllowedAction(this.client, action);
+      if (executed instanceof AllowlistError) return new GatewayError(executed.message);
+      return executed;
+    }
     const directory = await this.resolveSessionDirectory(catalog, action.sessionID);
     if (directory instanceof GatewayError) return directory;
     const executed = await executeAllowedAction(this.client, action, directory);
