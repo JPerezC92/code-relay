@@ -1,7 +1,7 @@
 /**
  * CodeRelay TUI plugin. Registers the `coderelay-pairing` route and the
  * `CodeRelay: Pair device` palette command, and renders the pairing QR inside
- * an xlarge dialog as compact half-block text — never the ANSI QR string.
+ * a content-sized dialog as compact half-block text — never the ANSI QR string.
  */
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from '@opencode-ai/plugin/tui';
 import { jsx, type JSX } from '@opentui/solid/jsx-runtime';
@@ -38,12 +38,21 @@ export const QR_UPPER_LIGHT_LOWER_DARK_GLYPH = '▄';
 export const PAIRING_QR_MAX_MODULES_PER_SIDE = 69;
 export const PAIRING_QR_MAX_WIDTH_COLUMNS =
   PAIRING_QR_MAX_MODULES_PER_SIDE + QR_QUIET_ZONE_MODULES * 2;
-/**
- * The xlarge dialog is capped at `terminal width - 2`, so a terminal narrower
- * than this cannot fit the QR plus its quiet zone and falls back to the
- * full-screen route.
+ /**
+ * Worst-case floor for a max-size QR in the xlarge tier (`terminal width - 2`).
+ * Runtime sizing uses the rendered QR width, not this constant.
  */
 export const PAIRING_DIALOG_MIN_TERMINAL_WIDTH = PAIRING_QR_MAX_WIDTH_COLUMNS + 2;
+/** Dialog chrome (padding) reserved beside the QR when picking medium or large. */
+export const PAIRING_DIALOG_CHROME_COLUMNS = 4;
+export const PAIRING_DIALOG_MEDIUM_COLUMNS = 60;
+export const PAIRING_DIALOG_LARGE_COLUMNS = 80;
+export const PAIRING_QR_TOO_NARROW_LINE = 'terminal too narrow for QR';
+export const PAIRING_DIALOG_ESC_HINT = 'esc: close';
+/** Left inset so dialog text and the QR are not flush against the border. */
+export const PAIRING_DIALOG_TEXT_PAD = 2;
+
+export type PairingDialogSize = 'medium' | 'large' | 'xlarge';
 
 export type PairingViewStatus = 'waiting' | 'connected' | 'revoked' | 'expired' | 'idle';
 
@@ -99,7 +108,7 @@ export interface PairingView {
   /** Stores a live payload; the gateway only serves one while a pairing waits, so the status returns to `waiting`. */
   readonly setPairingPayload: (payload: PairingPayload, qr: string) => void;
   readonly clearPairingPayload: () => void;
-  readonly render: (now: Date) => string;
+  readonly render: (now: Date, maxColumnWidth?: number) => string;
 }
 
 export function createPairingView(endpoints: Endpoint[], expiresAt: string): PairingView {
@@ -116,7 +125,7 @@ export function createPairingView(endpoints: Endpoint[], expiresAt: string): Pai
       setState((previous) => ({ ...previous, status: 'waiting', payload, qr })),
     clearPairingPayload: () =>
       setState((previous) => ({ ...previous, payload: null, qr: null })),
-    render: (now) => renderPairingView(state(), now),
+    render: (now, maxColumnWidth) => renderPairingView(state(), now, maxColumnWidth),
   };
 }
 
@@ -186,17 +195,75 @@ export function renderQrMatrixRows(
   return terminalRows;
 }
 
-/** Renders the QR rows for a payload's JSON encoding. */
-export function renderQrRows(
-  json: string,
-  quietZoneModules: number = QR_QUIET_ZONE_MODULES,
-): string[] {
-  return renderQrMatrixRows(createQrCode(json).modules, quietZoneModules);
+ /**
+ * Renders the QR rows for a payload's JSON encoding. When `maxColumnWidth` is
+ * set, the quiet zone starts at 4 and drops by 1 until the row fits, stopping
+ * at 0. A matrix wider than the max yields no rows — never a clipped QR.
+ * Omitting the max keeps the natural quiet zone and does not grow the QR.
+ */
+export function renderQrRows(json: string, maxColumnWidth?: number): string[] {
+  const matrix = createQrCode(json).modules;
+  if (maxColumnWidth === undefined) {
+    return renderQrMatrixRows(matrix, QR_QUIET_ZONE_MODULES);
+  }
+  let quietZoneModules = QR_QUIET_ZONE_MODULES;
+  while (matrix.size + quietZoneModules * 2 > maxColumnWidth && quietZoneModules > 0) {
+    quietZoneModules -= 1;
+  }
+  if (matrix.size + quietZoneModules * 2 > maxColumnWidth) return [];
+  return renderQrMatrixRows(matrix, quietZoneModules);
 }
 
 /** Compact half-block QR for a pairing payload as one newline-joined string. */
-export function renderPairingQrRows(payload: PairingPayload): string {
-  return renderQrRows(pairingPayloadJson(payload)).join('\n');
+export function renderPairingQrRows(payload: PairingPayload, maxColumnWidth?: number): string {
+  return renderQrRows(pairingPayloadJson(payload), maxColumnWidth).join('\n');
+}
+
+/**
+ * Columns the QR may occupy in a dialog tier. Medium and large reserve chrome;
+ * xlarge is the terminal width minus 2. A tier the terminal cannot open yields
+ * null.
+ */
+export function pairingDialogQrBudget(
+  size: PairingDialogSize,
+  terminalWidth: number,
+): number | null {
+  if (size === 'medium') {
+    if (terminalWidth < PAIRING_DIALOG_MEDIUM_COLUMNS) return null;
+    return PAIRING_DIALOG_MEDIUM_COLUMNS - PAIRING_DIALOG_CHROME_COLUMNS - PAIRING_DIALOG_TEXT_PAD;
+  }
+  if (size === 'large') {
+    if (terminalWidth < PAIRING_DIALOG_LARGE_COLUMNS) return null;
+    return PAIRING_DIALOG_LARGE_COLUMNS - PAIRING_DIALOG_CHROME_COLUMNS - PAIRING_DIALOG_TEXT_PAD;
+  }
+  const budget = terminalWidth - 2 - PAIRING_DIALOG_TEXT_PAD;
+  return budget > 0 ? budget : null;
+}
+
+function padDialogText(text: string): string {
+  const pad = ' '.repeat(PAIRING_DIALOG_TEXT_PAD);
+  return text
+    .split('\n')
+    .map((line) => `${pad}${line}`)
+    .join('\n');
+}
+
+/**
+ * Smallest dialog tier whose budget can hold the QR (quiet zone shrunk toward
+ * 0). Null when even xlarge cannot fit the matrix alone.
+ */
+export function resolvePairingDialogSize(
+  json: string | null,
+  terminalWidth: number,
+): PairingDialogSize | null {
+  const sizes: PairingDialogSize[] = ['medium', 'large', 'xlarge'];
+  for (const size of sizes) {
+    const budget = pairingDialogQrBudget(size, terminalWidth);
+    if (budget === null) continue;
+    if (json === null) return size;
+    if (renderQrRows(json, budget).length > 0) return size;
+  }
+  return null;
 }
 
 /**
@@ -204,7 +271,31 @@ export function renderPairingQrRows(payload: PairingPayload): string {
  * once the loopback payload fetch has succeeded. This pure formatter returns
  * text, not a valid root OpenTUI JSX element.
  */
-export function renderPairingView(state: PairingViewState, now: Date): string {
+ function fittedQrText(
+  state: PairingViewState,
+  maxColumnWidth: number | undefined,
+): { kind: 'qr'; text: string } | { kind: 'omitted' } | { kind: 'absent' } {
+  if (state.payload === null) {
+    return state.qr === null ? { kind: 'absent' } : { kind: 'qr', text: state.qr };
+  }
+  if (maxColumnWidth === undefined) {
+    return state.qr === null ? { kind: 'absent' } : { kind: 'qr', text: state.qr };
+  }
+  const rows = renderQrRows(pairingPayloadJson(state.payload), maxColumnWidth);
+  if (rows.length === 0) return { kind: 'omitted' };
+  return { kind: 'qr', text: rows.join('\n') };
+}
+
+function appendNarrowQrFallback(lines: string[], selectedUrl: string | null): void {
+  if (selectedUrl !== null) lines.push(selectedUrl);
+  lines.push(PAIRING_QR_TOO_NARROW_LINE);
+}
+
+export function renderPairingView(
+  state: PairingViewState,
+  now: Date,
+  maxColumnWidth?: number,
+): string {
   const expiresAt = state.payload?.expiresAt ?? state.expiresAt;
   const lines = [
     'CodeRelay pairing',
@@ -213,7 +304,9 @@ export function renderPairingView(state: PairingViewState, now: Date): string {
     `expiresInSeconds: ${secondsUntil(expiresAt, now)}`,
   ];
   for (const endpoint of state.endpoints) lines.push(`- ${endpoint.kind}: ${endpoint.url}`);
-  if (state.qr !== null) lines.push(state.qr);
+  const qr = fittedQrText(state, maxColumnWidth);
+  if (qr.kind === 'qr') lines.push(qr.text);
+  if (qr.kind === 'omitted') appendNarrowQrFallback(lines, state.selectedUrl);
   if (state.selectedUrl !== null) lines.push(`selected: ${state.selectedUrl}`);
   if (state.customUrl.length > 0) lines.push(`custom: ${state.customUrl}`);
   return lines.join('\n');
@@ -244,19 +337,27 @@ export function pairingStatusHint(status: PairingViewStatus): string {
  * payload's `expiresAt`, and the compact QR rows. This pure formatter returns
  * text, not a valid root OpenTUI JSX element.
  */
-export function renderPairingDialogText(state: PairingViewState, now: Date): string {
+ export function renderPairingDialogText(
+  state: PairingViewState,
+  now: Date,
+  maxColumnWidth?: number,
+): string {
   const lines = [PAIRING_COMMAND_TITLE, `status: ${state.status}`];
   lines.push(state.selectedUrl === null ? 'endpoint: none' : `endpoint: ${state.selectedUrl}`);
   if (state.payload === null) {
     lines.push(pairingStatusHint(state.status));
   } else {
     lines.push(`expiresInSeconds: ${secondsUntil(state.payload.expiresAt, now)}`);
-    if (state.qr !== null) {
+    const qr = fittedQrText(state, maxColumnWidth);
+    if (qr.kind === 'qr') {
       lines.push('');
-      lines.push(state.qr);
+      lines.push(qr.text);
+    } else if (qr.kind === 'omitted') {
+      appendNarrowQrFallback(lines, state.selectedUrl);
     }
   }
-  return lines.join('\n');
+  lines.push(PAIRING_DIALOG_ESC_HINT);
+  return padDialogText(lines.join('\n'));
 }
 
 /** Wraps formatter output in the root OpenTUI text element required by TUI callbacks. */
@@ -501,9 +602,14 @@ export interface PairingCommand {
   run: () => void | Promise<void>;
 }
 
+ export interface PairingKeyBinding {
+  key: string;
+  cmd: () => void;
+}
+
 export interface PairingCommandLayer {
   commands: PairingCommand[];
-  bindings: [];
+  bindings: PairingKeyBinding[];
 }
 
 /**
@@ -514,8 +620,9 @@ export interface PairingCommandLayer {
 export interface PairingTuiHost {
   registerLayer: (layer: PairingCommandLayer) => () => void;
   registerRoute: (name: string, render: () => string) => void;
-  dialogReplace: (render: () => string, onClose?: () => void) => void;
-  dialogSetSize: (size: 'medium' | 'large' | 'xlarge') => void;
+   dialogReplace: (render: () => string, onClose?: () => void) => void;
+  dialogClear: () => void;
+  dialogSetSize: (size: PairingDialogSize) => void;
   navigate: (name: string) => void;
   terminalWidth: () => number;
   onDispose: (fn: () => void) => void;
@@ -524,7 +631,7 @@ export interface PairingTuiHost {
 /**
  * Adapts the production TUI API onto `PairingTuiHost`. Dialog renders return
  * root OpenTUI text elements, and `dialog.replace` resets the size to medium,
- * so the flow always calls `setSize('xlarge')` after replacing.
+ * so the flow calls `setSize` with the computed tier after replacing.
  */
 export function createTuiHost(api: TuiPluginApi): PairingTuiHost {
   return {
@@ -537,13 +644,19 @@ export function createTuiHost(api: TuiPluginApi): PairingTuiHost {
           category: command.category,
           run: () => command.run(),
         })),
-        bindings: [],
+        bindings: layer.bindings.map((binding) => ({
+          key: binding.key,
+          cmd: binding.cmd,
+        })),
       }),
     registerRoute: (name, render) => {
       api.route.register([{ name, render: () => renderPairingText(render()) }]);
     },
-    dialogReplace: (render, onClose) => {
+     dialogReplace: (render, onClose) => {
       api.ui.dialog.replace(() => renderPairingText(render()), onClose);
+    },
+    dialogClear: () => {
+      api.ui.dialog.clear();
     },
     dialogSetSize: (size) => {
       api.ui.dialog.setSize(size);
@@ -571,9 +684,9 @@ export interface PairingTuiOptions {
 /**
  * Wires the pairing TUI: the full-screen route, the initial bounded poll, the
  * `CodeRelay: Pair device` palette command, and lifecycle disposal. The
- * command renews the pairing, then opens the xlarge QR dialog — or, when the
- * terminal is too narrow for the QR plus its quiet zone, navigates to the
- * route instead of opening the dialog.
+ * command renews the pairing, then opens the smallest dialog tier that fits
+ * the QR — or, when no tier can show the matrix, navigates to the route.
+ * Esc clears the dialog, stops polling, and drops the payload.
  */
 export async function startPairingTui(
   host: PairingTuiHost,
@@ -602,7 +715,7 @@ export async function startPairingTui(
     });
   };
 
-  host.registerRoute(PAIRING_ROUTE_NAME, () => view.render(now()));
+   host.registerRoute(PAIRING_ROUTE_NAME, () => view.render(now(), host.terminalWidth()));
   restartPolling();
 
   host.registerLayer({
@@ -621,21 +734,38 @@ export async function startPairingTui(
           if (payload !== null) {
             view.setPairingPayload(payload, renderPairingQrRows(payload));
           }
-          if (host.terminalWidth() < PAIRING_DIALOG_MIN_TERMINAL_WIDTH) {
+          const size = resolvePairingDialogSize(
+            payload === null ? null : pairingPayloadJson(payload),
+            host.terminalWidth(),
+          );
+          if (size === null) {
             host.navigate(PAIRING_ROUTE_NAME);
             restartPolling();
             return;
           }
           host.dialogReplace(
-            () => renderPairingDialogText(view.state(), new Date(view.tick())),
+            () =>
+              renderPairingDialogText(
+                view.state(),
+                new Date(view.tick()),
+                pairingDialogQrBudget(size, host.terminalWidth()) ?? 0,
+              ),
             () => stopAndClear(),
           );
-          host.dialogSetSize('xlarge');
+          host.dialogSetSize(size);
           restartPolling();
         },
       },
     ],
-    bindings: [],
+    bindings: [
+      {
+        key: 'escape',
+        cmd: () => {
+          host.dialogClear();
+          stopAndClear();
+        },
+      },
+    ],
   });
 
   host.onDispose(() => {

@@ -5,11 +5,13 @@ import { toBase64 } from './crypto';
 import type { Endpoint } from './endpoints';
 import type { PairingState } from './pairing';
 import {
-  PAIRING_COMMAND_CATEGORY,
+   PAIRING_COMMAND_CATEGORY,
   PAIRING_COMMAND_NAME,
   PAIRING_COMMAND_TITLE,
+  PAIRING_DIALOG_ESC_HINT,
   PAIRING_DIALOG_MIN_TERMINAL_WIDTH,
   PAIRING_QR_MAX_WIDTH_COLUMNS,
+  PAIRING_QR_TOO_NARROW_LINE,
   PAIRING_RENEW_PATH,
   PAIRING_ROUTE_NAME,
   QR_DARK_MODULE_GLYPH,
@@ -21,7 +23,8 @@ import {
   renderPairingDialogText,
   renderPairingQrRows,
   renderQrMatrixRows,
-  renderQrRows,
+   renderQrRows,
+  resolvePairingDialogSize,
   startPairingPayloadPolling,
   startPairingTui,
 } from './tui';
@@ -134,10 +137,13 @@ function createFakeHost(width: number, calls: string[]): FakeHost {
       routes.push(name);
       routeRenders.push(render);
     },
-    dialogReplace: (render, onClose) => {
+     dialogReplace: (render, onClose) => {
       calls.push('dialog.replace');
       dialogRenders.push(render);
       dialogClose.push(onClose);
+    },
+    dialogClear: () => {
+      calls.push('dialog.clear');
     },
     dialogSetSize: (size) => {
       calls.push(`dialog.setSize:${size}`);
@@ -222,8 +228,28 @@ describe('QR row rendering', () => {
       expect(row).toHaveLength(width);
       expect(row).toMatch(/^[ ▀▄█]*$/);
     }
-    expect(rows.join('\n')).not.toMatch(/\x1b/);
+     expect(rows.join('\n')).not.toMatch(/\x1b/);
     expect(rows.some((row) => row.includes(QR_DARK_MODULE_GLYPH))).toBe(true);
+  });
+
+  it('does not grow the QR on a wide budget and never exceeds a narrow budget', () => {
+    const json = pairingPayloadJson(createPayload());
+    const natural = renderQrRows(json);
+    const naturalWidth = natural[0]?.length ?? 0;
+    const wide = renderQrRows(json, 500);
+    expect(wide[0]?.length).toBe(naturalWidth);
+    expect(wide[0]?.length).toBeLessThanOrEqual(PAIRING_QR_MAX_WIDTH_COLUMNS);
+
+    const narrowBudget = Math.max(1, naturalWidth - 4);
+    const narrowed = renderQrRows(json, narrowBudget);
+    expect(narrowed.length).toBeGreaterThan(0);
+    for (const row of narrowed) {
+      expect(row.length).toBeLessThanOrEqual(narrowBudget);
+      expect(row.length).toBeLessThanOrEqual(naturalWidth);
+    }
+
+    const clipped = renderQrRows(json, 1);
+    expect(clipped).toEqual([]);
   });
 });
 
@@ -241,11 +267,26 @@ describe('renderPairingDialogText', () => {
     expect(text).toContain('status: waiting');
     expect(text).toContain(`endpoint: ${ENDPOINTS[0]?.url}`);
     expect(text).toContain('expiresInSeconds: 120');
-    expect(text).toContain(QR_DARK_MODULE_GLYPH);
+     expect(text).toContain(QR_DARK_MODULE_GLYPH);
+    expect(text).toContain(PAIRING_DIALOG_ESC_HINT);
     expect(text).not.toMatch(/\x1b/);
     expect(renderPairingDialogText(withPayload, new Date('2026-09-19T00:00:05.000Z'))).toContain(
       'expiresInSeconds: 115',
     );
+  });
+
+   it('shows the endpoint instead of a clipped QR when the budget cannot fit the matrix', () => {
+    const payload = createPayload();
+    const state = {
+      ...createPairingViewState(ENDPOINTS, NOW_ISO),
+      payload,
+      qr: renderPairingQrRows(payload),
+    };
+    const text = renderPairingDialogText(state, new Date(NOW_ISO), 1);
+    expect(text).toContain(ENDPOINTS[0]?.url);
+    expect(text).toContain(PAIRING_QR_TOO_NARROW_LINE);
+    expect(text).not.toContain(QR_DARK_MODULE_GLYPH);
+    expect(text).toContain(PAIRING_DIALOG_ESC_HINT);
   });
 
   it('falls back to a waiting line without payload or QR', () => {
@@ -598,7 +639,7 @@ describe('startPairingTui', () => {
     expect(routeRender()).toContain('CodeRelay pairing');
     const layer = fake.layers[0];
     expect(layer).toBeDefined();
-    expect(layer?.bindings).toEqual([]);
+     expect(layer?.bindings.map((binding) => binding.key)).toEqual(['escape']);
     const command = layer?.commands[0];
     expect(command?.namespace).toBe('palette');
     expect(command?.name).toBe(PAIRING_COMMAND_NAME);
@@ -609,20 +650,23 @@ describe('startPairingTui', () => {
     expect(command?.category).toBe('CodeRelay');
   });
 
-  it('renews, then replaces the dialog, then sets the xlarge size, in that order', async () => {
+   it('renews, then replaces the dialog, then sets the smallest fitting size, in that order', async () => {
     const { calls, runCommand } = await start(120);
+    const size = resolvePairingDialogSize(pairingPayloadJson(createPayload()), 120);
+    if (size === null) throw new Error('expected a dialog tier at width 120');
 
     await runCommand();
 
     expect(calls).toEqual([
       `POST http://127.0.0.1:47821${PAIRING_RENEW_PATH}`,
       'dialog.replace',
-      'dialog.setSize:xlarge',
+      `dialog.setSize:${size}`,
     ]);
+    expect(size === 'medium' || size === 'large' || size === 'xlarge').toBe(true);
   });
 
   it('navigates to the pairing route instead of opening the dialog on narrow terminals', async () => {
-    const { calls, fake, runCommand } = await start(PAIRING_DIALOG_MIN_TERMINAL_WIDTH - 1);
+    const { calls, fake, runCommand } = await start(8);
 
     await runCommand();
 
@@ -631,6 +675,11 @@ describe('startPairingTui', () => {
       `navigate:${PAIRING_ROUTE_NAME}`,
     ]);
     expect(fake.dialogRenders).toHaveLength(0);
+    const routeRender = fake.routeRenders[0];
+    if (routeRender === undefined) throw new Error('expected the pairing route to be registered');
+    expect(routeRender()).toContain(ENDPOINTS[0]?.url);
+    expect(routeRender()).toContain(PAIRING_QR_TOO_NARROW_LINE);
+    expect(routeRender()).not.toContain(QR_DARK_MODULE_GLYPH);
   });
 
   it('renders the live countdown and QR inside the dialog while polling', async () => {
@@ -674,6 +723,26 @@ describe('startPairingTui', () => {
     expect(render()).toContain('device connected');
     expect(render()).not.toContain('waiting for pairing payload…');
     expect(render()).not.toContain(QR_DARK_MODULE_GLYPH);
+  });
+
+   it('Esc binding clears the dialog, stops polling, and drops the payload', async () => {
+    const { fake, harness, poll, calls, runCommand } = await start(120);
+
+    await runCommand();
+    poll.enqueue({ kind: 'payload', payload: createPayload() });
+    harness.tick();
+    await flush();
+    expect(harness.isStopped()).toBe(false);
+    expect(fake.dialogRenders[0]?.()).toContain(PAIRING_DIALOG_ESC_HINT);
+
+    const binding = fake.layers[0]?.bindings.find((entry) => entry.key === 'escape');
+    if (binding === undefined) throw new Error('expected an Esc binding');
+    binding.cmd();
+
+    expect(calls).toContain('dialog.clear');
+    expect(harness.isStopped()).toBe(true);
+    expect(fake.dialogRenders[0]?.()).toContain('waiting for pairing payload…');
+    expect(fake.dialogRenders[0]?.()).not.toContain(QR_DARK_MODULE_GLYPH);
   });
 
   it('dialog close stops polling and clears the payload and QR', async () => {
