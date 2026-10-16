@@ -93,8 +93,19 @@
         "memories": {
             "type": "local",
             "command": ["npx", "-y", "@memories.sh/cli", "serve"]
+        },
+        "context7": {
+            "type": "remote",
+            "url": "https://mcp.context7.com/mcp",
+            "headers": {
+                "CONTEXT7_API_KEY": "{file:./.secrets/context7-api-key}"
+            },
+            "enabled": true
         }
-    }
+    },
+"plugin": [
+    "file:///home/dexm76/projects-personal/CodeRelay/packages/opencode-plugin/src/index.ts"
+]
     // MCP servers (per-project — add your own here on copy). Example (generic):
     // "chrome-devtools": {
     //     "type": "local",

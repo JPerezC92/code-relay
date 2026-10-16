@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -15,7 +16,16 @@ import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PermissionCard } from '@/modules/session/components/PermissionCard';
 import { useSession } from '@/modules/session/hooks/use-session';
-import type { ChatMessage, PermissionRequest } from '@/modules/session/domain/entities/session';
+import type {
+  ChatMessage,
+  EditCard,
+  PermissionRequest,
+  ReasoningRow,
+  SubagentRow,
+  ToolRow,
+  TranscriptItem,
+} from '@/modules/session/domain/entities/session';
+import { formatSubagentLabel, subagentTitle } from '@/modules/session/domain/entities/session';
 
 interface SelectOption {
   key: string;
@@ -40,6 +50,190 @@ function MessageBubble({ message }: MessageBubbleProps) {
       <Text style={styles.messageText}>{message.text}</Text>
     </View>
   );
+}
+
+interface ReasoningRowViewProps {
+  item: ReasoningRow;
+}
+
+function reasoningLabel(item: ReasoningRow): string {
+  if (typeof item.start === 'number' && typeof item.end === 'number') {
+    return `Thought ${item.end - item.start}ms`;
+  }
+  return 'Thinking';
+}
+
+function ReasoningRowView({ item }: ReasoningRowViewProps) {
+  const [expanded, setExpanded] = useState(false);
+  const label = reasoningLabel(item);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={() => setExpanded((current) => !current)}
+      style={styles.activityRow}
+    >
+      <Text style={styles.activityLabel}>{label}</Text>
+      {expanded ? <Text style={styles.messageText}>{item.text}</Text> : null}
+    </Pressable>
+  );
+}
+
+interface EditCardViewProps {
+  item: EditCard;
+}
+
+function editHeader(item: EditCard): string {
+  return item.path.length > 0 ? `Edit ${item.path}` : item.tool;
+}
+
+function editStats(item: EditCard): string | null {
+  const parts: string[] = [];
+  if (typeof item.additions === 'number') parts.push(`+${item.additions}`);
+  if (typeof item.deletions === 'number') parts.push(`-${item.deletions}`);
+  return parts.length === 0 ? null : parts.join(' ');
+}
+
+function skipDiffLine(line: string): boolean {
+  return (
+    line.startsWith('Index:') ||
+    line.startsWith('===') ||
+    line.startsWith('--- ') ||
+    line.startsWith('+++ ')
+  );
+}
+
+function diffLineStyle(line: string): object {
+  if (line.startsWith('+')) return styles.diffAdded;
+  if (line.startsWith('-')) return styles.diffRemoved;
+  if (line.startsWith('@@')) return styles.diffHunk;
+  return styles.diffContext;
+}
+
+interface EditDiffProps {
+  diff: string;
+}
+
+function EditDiff({ diff }: EditDiffProps) {
+  const lines = diff.split('\n').filter((line) => line.length > 0 && !skipDiffLine(line));
+  return (
+    <ScrollView horizontal style={styles.diffBlock}>
+      <View style={styles.diffLines}>
+        {lines.map((line, index) => (
+          <Text
+            key={`${index}:${line}`}
+            numberOfLines={1}
+            style={[styles.diffLine, diffLineStyle(line)]}
+          >
+            {line}
+          </Text>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+function EditCardView({ item }: EditCardViewProps) {
+  const header = editHeader(item);
+  const stats = editStats(item);
+  const showStatus = item.status.length > 0 && item.status !== 'completed';
+  return (
+    <View accessibilityLabel={header} style={styles.editCard}>
+      <View style={styles.editHeader}>
+        <Text style={styles.activityLabel}>{header}</Text>
+        {stats !== null ? <Text style={styles.messageText}>{stats}</Text> : null}
+      </View>
+      {showStatus ? <Text style={styles.messageText}>{item.status}</Text> : null}
+      {item.diff !== undefined && item.diff.length > 0 ? <EditDiff diff={item.diff} /> : null}
+    </View>
+  );
+}
+
+interface ToolRowViewProps {
+  item: ToolRow;
+}
+
+function ToolRowView({ item }: ToolRowViewProps) {
+  const [expanded, setExpanded] = useState(false);
+  const hasOutput = item.output !== undefined && item.output.length > 0;
+  if (!hasOutput) {
+    return (
+      <View accessibilityLabel={item.title} style={styles.activityRow}>
+        <Text style={styles.activityLabel}>{item.title}</Text>
+      </View>
+    );
+  }
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={item.title}
+      onPress={() => setExpanded((current) => !current)}
+      style={styles.activityRow}
+    >
+      <Text style={styles.activityLabel}>{item.title}</Text>
+      {expanded ? <Text style={styles.messageText}>{item.output}</Text> : null}
+    </Pressable>
+  );
+}
+
+function visibleTaskLabel(item: SubagentRow): string {
+  if (item.agent === undefined || item.agent.length === 0) return item.label;
+  return formatSubagentLabel(item.agent, subagentTitle(item.agent, item.label));
+}
+
+function isTaskPressable(item: SubagentRow): boolean {
+  if (item.childSessionId !== undefined && item.childSessionId.length > 0) return true;
+  if (item.agent !== undefined && item.agent.length > 0) return true;
+  return item.title !== undefined && item.title.length > 0;
+}
+
+interface SubagentRowViewProps {
+  item: SubagentRow;
+  onOpen: (row: SubagentRow) => void;
+}
+
+function SubagentRowView({ item, onOpen }: SubagentRowViewProps) {
+  const label = visibleTaskLabel(item);
+  if (!isTaskPressable(item)) {
+    return (
+      <View accessibilityLabel={label} style={styles.activityRow}>
+        <Text style={styles.activityLabel}>{label}</Text>
+        <Text style={styles.messageText}>{item.status}</Text>
+      </View>
+    );
+  }
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={() => onOpen(item)}
+      style={styles.activityRow}
+    >
+      <Text style={styles.activityLabel}>{label}</Text>
+      <Text style={styles.messageText}>{item.status}</Text>
+    </Pressable>
+  );
+}
+
+interface TranscriptRowProps {
+  item: TranscriptItem;
+  onOpenChild: (row: SubagentRow) => void;
+}
+
+function TranscriptRow({ item, onOpenChild }: TranscriptRowProps) {
+  if (item.kind === 'text') {
+    const message: ChatMessage = {
+      id: item.id,
+      sessionId: item.sessionId,
+      role: item.role,
+      text: item.text,
+    };
+    return <MessageBubble message={message} />;
+  }
+  if (item.kind === 'reasoning') return <ReasoningRowView item={item} />;
+  if (item.kind === 'edit') return <EditCardView item={item} />;
+  if (item.kind === 'tool') return <ToolRowView item={item} />;
+  return <SubagentRowView item={item} onOpen={onOpenChild} />;
 }
 
 interface ChoiceSelectProps {
@@ -167,7 +361,8 @@ export function ChatScreen() {
     models,
     selectedModel,
     selectedVariant,
-    messages,
+    transcript,
+    childSessionId,
     permissions,
     status,
     isLoading,
@@ -179,15 +374,20 @@ export function ChatScreen() {
     sendPrompt,
     abort,
     replyToPermission,
+    openTaskRow,
+    closeChildSession,
   } = useSession();
   const insets = useSafeAreaInsets();
   const [prompt, setPrompt] = useState('');
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [reduceMotionEnabled, setReduceMotionEnabled] = useState(false);
-  const listRef = useRef<FlatList<ChatMessage> | null>(null);
+  const listRef = useRef<FlatList<TranscriptItem> | null>(null);
   // Whether the user's scroll position is close enough to the end that newly
   // arrived content may follow it. Starts true: a fresh session tracks itself.
   const nearBottomRef = useRef(true);
+  // True from finger-down until the drag or its momentum ends. Content-size
+  // changes must not fight an in-progress scroll.
+  const draggingRef = useRef(false);
   // Set on mount and on session changes; consumed when real message content
   // arrives, which is then jumped to the end without animation.
   const pendingJumpRef = useRef(true);
@@ -228,8 +428,21 @@ export function ChatScreen() {
     nearBottomRef.current = distanceFromEnd <= NEAR_BOTTOM_THRESHOLD_PX;
   };
 
+  const handleScrollBeginDrag = (): void => {
+    draggingRef.current = true;
+  };
+
+  const handleScrollEndDrag = (): void => {
+    draggingRef.current = false;
+  };
+
+  const handleMomentumScrollEnd = (): void => {
+    draggingRef.current = false;
+  };
+
   const handleContentSizeChange = (_width: number, height: number): void => {
     if (height <= 0) return;
+    if (draggingRef.current) return;
     if (pendingJumpRef.current) {
       pendingJumpRef.current = false;
       listRef.current?.scrollToEnd({ animated: false });
@@ -357,18 +570,62 @@ export function ChatScreen() {
           onSelect={selectVariant}
         />
         {isLoading ? <Text style={styles.hint}>Loading sessions…</Text> : null}
-        <FlatList
-          ref={listRef}
-          testID="message-list"
-          style={styles.list}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <MessageBubble message={item} />}
-          ListEmptyComponent={<Text style={styles.hint}>No messages yet.</Text>}
-          onScroll={handleScroll}
-          onContentSizeChange={handleContentSizeChange}
-          scrollEventThrottle={16}
-        />
+        {childSessionId !== null ? (
+          <Modal visible animationType="none" onRequestClose={closeChildSession}>
+            <View
+              testID="child-session"
+              style={[
+                styles.container,
+                { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 },
+              ]}
+            >
+              <View style={styles.childHeader}>
+                <Button title="Back" onPress={closeChildSession} />
+              </View>
+              <FlatList
+                ref={listRef}
+                testID="message-list"
+                style={styles.list}
+                data={transcript}
+                keyExtractor={(item) => `${item.kind}:${item.id}`}
+                renderItem={({ item }) => (
+                  <TranscriptRow
+                    item={item}
+                    onOpenChild={(row) => void openTaskRow(row)}
+                  />
+                )}
+                ListEmptyComponent={<Text style={styles.hint}>No messages yet.</Text>}
+                onScroll={handleScroll}
+                onScrollBeginDrag={handleScrollBeginDrag}
+                onScrollEndDrag={handleScrollEndDrag}
+                onMomentumScrollEnd={handleMomentumScrollEnd}
+                onContentSizeChange={handleContentSizeChange}
+                scrollEventThrottle={16}
+              />
+            </View>
+          </Modal>
+        ) : (
+          <FlatList
+            ref={listRef}
+            testID="message-list"
+            style={styles.list}
+            data={transcript}
+            keyExtractor={(item) => `${item.kind}:${item.id}`}
+            renderItem={({ item }) => (
+              <TranscriptRow
+                item={item}
+                onOpenChild={(row) => void openTaskRow(row)}
+              />
+            )}
+            ListEmptyComponent={<Text style={styles.hint}>No messages yet.</Text>}
+            onScroll={handleScroll}
+            onScrollBeginDrag={handleScrollBeginDrag}
+            onScrollEndDrag={handleScrollEndDrag}
+            onMomentumScrollEnd={handleMomentumScrollEnd}
+            onContentSizeChange={handleContentSizeChange}
+            scrollEventThrottle={16}
+          />
+        )}
         {permissions.map((permission) => (
           <PermissionCard
             key={permission.id}
@@ -519,6 +776,60 @@ const styles = StyleSheet.create({
   },
   list: {
     flex: 1,
+  },
+  childHeader: {
+    marginBottom: 8,
+  },
+  activityRow: {
+    minHeight: 44,
+    justifyContent: 'center',
+    borderRadius: 8,
+    padding: 10,
+    marginVertical: 4,
+    backgroundColor: '#eef2ff',
+    alignSelf: 'stretch',
+  },
+  editCard: {
+    minHeight: 44,
+    justifyContent: 'center',
+    borderRadius: 8,
+    padding: 10,
+    marginVertical: 4,
+    backgroundColor: '#fef3c7',
+    alignSelf: 'stretch',
+  },
+  editHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  diffBlock: {
+    marginTop: 6,
+  },
+  diffLines: {
+    alignItems: 'flex-start',
+  },
+  diffLine: {
+    flexShrink: 0,
+    fontFamily: 'monospace',
+    fontSize: 12,
+    color: '#111827',
+  },
+  diffAdded: {
+    backgroundColor: '#dcfce7',
+  },
+  diffRemoved: {
+    backgroundColor: '#fee2e2',
+  },
+  diffHunk: {
+    color: '#6b7280',
+  },
+  diffContext: {},
+  activityLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
   },
   bubble: {
     borderRadius: 8,

@@ -436,6 +436,172 @@ describe('sessionService.fetchMessages', () => {
     expect(error.message).toBe('Host message list was malformed');
     expect(error.name).toBe('SessionServiceError');
   });
+
+  it('maps reasoning, edit, patch, and task parts without dropping text messages', async () => {
+    mockSendAction.mockResolvedValue({
+      result: {
+        type: 'session.messages',
+        value: [
+          {
+            info: { id: 'message-assistant', sessionID: 'session-alpha', role: 'assistant' },
+            parts: [
+              { type: 'reasoning', id: 'reason-1', text: 'Because', time: { start: 5, end: 15 } },
+              { type: 'text', text: 'Parent answer' },
+              {
+                type: 'tool',
+                id: 'edit-1',
+                tool: 'edit',
+                status: 'completed',
+                path: '/host/project/file.ts',
+                diff: '@@ -1 +1 @@\n-removed line\n+added line\n',
+                additions: 1,
+                deletions: 1,
+              },
+              {
+                type: 'tool',
+                id: 'write-1',
+                tool: 'write',
+                status: 'running',
+                path: '/host/project/new.ts',
+              },
+              {
+                type: 'tool',
+                id: 'apply-1',
+                tool: 'apply_patch',
+                status: 'completed',
+                path: '/host/project/applied.ts',
+              },
+              { type: 'patch', id: 'patch-1', files: ['/host/project/patched.ts', 1] },
+              {
+                type: 'tool',
+                id: 'bash-1',
+                tool: 'bash',
+                status: 'completed',
+                title: 'ls',
+                output: 'listed files',
+                path: '/secret',
+                cwd: '/secret/cwd',
+              },
+              {
+                type: 'tool',
+                id: 'task-1',
+                tool: 'task',
+                status: 'running',
+                title: 'Explore',
+                description: 'Find files',
+                childSessionId: 'child-ses-1',
+              },
+              {
+                type: 'tool',
+                id: 'task-forge',
+                tool: 'task',
+                status: 'completed',
+                title: 'Fix hook mapping leak',
+                agent: 'forge',
+                childSessionId: 'child-ses-2',
+              },
+              { type: 'tool', id: 'read-1', tool: 'read', status: 'completed', title: 'Read file' },
+            ],
+          },
+        ],
+      },
+      events: [],
+    });
+
+    const result = expectPollResult(await sessionService.fetchMessages('session-alpha'));
+
+    expect(result.messages).toStrictEqual([
+      {
+        id: 'message-assistant',
+        sessionId: 'session-alpha',
+        role: 'assistant',
+        text: 'Parent answer',
+      },
+    ]);
+    expect(result.items).toStrictEqual([
+      {
+        kind: 'reasoning',
+        id: 'reason-1',
+        sessionId: 'session-alpha',
+        text: 'Because',
+        start: 5,
+        end: 15,
+      },
+      {
+        kind: 'text',
+        id: 'message-assistant',
+        sessionId: 'session-alpha',
+        role: 'assistant',
+        text: 'Parent answer',
+      },
+      {
+        kind: 'edit',
+        id: 'edit-1',
+        sessionId: 'session-alpha',
+        tool: 'edit',
+        status: 'completed',
+        path: '/host/project/file.ts',
+        diff: '@@ -1 +1 @@\n-removed line\n+added line\n',
+        additions: 1,
+        deletions: 1,
+      },
+      {
+        kind: 'edit',
+        id: 'write-1',
+        sessionId: 'session-alpha',
+        tool: 'write',
+        status: 'running',
+        path: '/host/project/new.ts',
+      },
+      {
+        kind: 'edit',
+        id: 'apply-1',
+        sessionId: 'session-alpha',
+        tool: 'apply_patch',
+        status: 'completed',
+        path: '/host/project/applied.ts',
+      },
+      {
+        kind: 'tool',
+        id: 'bash-1',
+        sessionId: 'session-alpha',
+        tool: 'bash',
+        status: 'completed',
+        title: 'ls',
+        output: 'listed files',
+      },
+      {
+        kind: 'task',
+        id: 'task-1',
+        sessionId: 'session-alpha',
+        label: 'Explore',
+        status: 'running',
+        title: 'Explore',
+        childSessionId: 'child-ses-1',
+      },
+      {
+        kind: 'task',
+        id: 'task-forge',
+        sessionId: 'session-alpha',
+        label: 'Forge Task – Fix hook mapping leak',
+        status: 'completed',
+        agent: 'forge',
+        title: 'Fix hook mapping leak',
+        childSessionId: 'child-ses-2',
+      },
+      {
+        kind: 'tool',
+        id: 'read-1',
+        sessionId: 'session-alpha',
+        tool: 'read',
+        status: 'completed',
+        title: 'Read file',
+      },
+    ]);
+    expect(result.items?.some((item) => item.id === 'patch-1')).toBe(false);
+    expect(JSON.stringify(result.items)).not.toContain('cwd');
+    expect(JSON.stringify(result.items)).not.toContain('/secret');
+  });
 });
 
 describe('sessionService.listModels', () => {
@@ -554,7 +720,11 @@ describe('sessionService.sendPrompt', () => {
       text: 'Review the diff',
       model,
     });
-    expect(mockSendAction.mock.calls[0]?.[0]?.model).not.toHaveProperty('variant');
+    const action = mockSendAction.mock.calls[0]?.[0];
+    if (action === undefined || action.type !== 'session.prompt') {
+      throw new Error('expected session.prompt');
+    }
+    expect(action.model).not.toHaveProperty('variant');
   });
 
   it('sends a chosen variant and omits an empty one', async () => {

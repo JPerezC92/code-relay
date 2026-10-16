@@ -267,6 +267,119 @@ function isTextPart(value: unknown): value is { type: 'text'; text: string } {
   return isUnknownRecord(value) && value['type'] === 'text' && typeof value['text'] === 'string';
 }
 
+const FILE_ACTIVITY_TOOLS = new Set(['edit', 'write', 'apply_patch']);
+const TOOL_OUTPUT_LIMIT = 12_000;
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return isUnknownRecord(value) ? value : null;
+}
+
+function projectFileDiff(
+  state: Record<string, unknown>,
+  projected: Record<string, unknown>,
+): void {
+  const metadata = readRecord(state['metadata']);
+  if (metadata === null) return;
+  const filediff = readRecord(metadata['filediff']);
+  if (typeof metadata['diff'] === 'string') {
+    projected['diff'] = metadata['diff'];
+  } else if (filediff !== null && typeof filediff['patch'] === 'string') {
+    projected['diff'] = filediff['patch'];
+  }
+  if (filediff === null) return;
+  if (typeof filediff['additions'] === 'number') projected['additions'] = filediff['additions'];
+  if (typeof filediff['deletions'] === 'number') projected['deletions'] = filediff['deletions'];
+}
+
+function firstString(
+  record: Record<string, unknown> | null,
+  keys: readonly string[],
+): string | undefined {
+  if (record === null) return undefined;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string') return value;
+  }
+  return undefined;
+}
+
+/**
+ * Mobile-safe activity part. Text stays on the existing projector. File tools
+ * omit output. Other tools keep a title and a string output only. Raw, cwd,
+ * error objects, and prompt bodies are omitted.
+ */
+export function projectActivityPart(part: unknown): Record<string, unknown> | null {
+  if (!isUnknownRecord(part)) return null;
+  const id = typeof part['id'] === 'string'
+    ? part['id']
+    : typeof part['callID'] === 'string'
+      ? part['callID']
+      : null;
+  if (id === null) return null;
+  if (part['type'] === 'reasoning') {
+    if (typeof part['text'] !== 'string') return null;
+    const time = readRecord(part['time']);
+    if (time === null || typeof time['start'] !== 'number') return null;
+    const projectedTime: { start: number; end?: number } = { start: time['start'] };
+    if (typeof time['end'] === 'number') projectedTime.end = time['end'];
+    return { type: 'reasoning', id, text: part['text'], time: projectedTime };
+  }
+  if (part['type'] === 'patch') {
+    if (!Array.isArray(part['files'])) return null;
+    return {
+      type: 'patch',
+      id,
+      files: part['files'].filter((file): file is string => typeof file === 'string'),
+    };
+  }
+  if (part['type'] !== 'tool' || typeof part['tool'] !== 'string') return null;
+  const tool = part['tool'];
+  const state = readRecord(part['state']);
+  if (state === null || typeof state['status'] !== 'string') return null;
+  const projected: Record<string, unknown> = {
+    type: 'tool',
+    id,
+    tool,
+    status: state['status'],
+  };
+  if (typeof state['title'] === 'string') projected['title'] = state['title'];
+  const input = readRecord(state['input']);
+  if (FILE_ACTIVITY_TOOLS.has(tool)) {
+    const path = firstString(input, ['filePath', 'path', 'file']);
+    if (path !== undefined) projected['path'] = path;
+    projectFileDiff(state, projected);
+    return projected;
+  }
+  if (tool === 'task') {
+    const agent = firstString(input, ['subagent_type', 'agent']);
+    if (agent !== undefined) projected['agent'] = agent;
+    const description = firstString(input, ['description']);
+    if (description !== undefined) projected['description'] = description;
+    const childSessionId = firstString(readRecord(state['metadata']), ['sessionId', 'sessionID']);
+    if (childSessionId !== undefined) projected['childSessionId'] = childSessionId;
+    return projected;
+  }
+  const command = firstString(input, ['command']);
+  const title = typeof state['title'] === 'string'
+    ? state['title']
+    : command ?? tool;
+  projected['title'] = title;
+  const output = typeof state['output'] === 'string'
+    ? state['output']
+    : typeof state['error'] === 'string'
+      ? state['error']
+      : undefined;
+  if (output !== undefined && output.length > 0) {
+    projected['output'] = output.slice(0, TOOL_OUTPUT_LIMIT);
+  }
+  return projected;
+}
+
+function projectMessagePart(part: unknown): Record<string, unknown> | null {
+  if (isTextPart(part)) return { type: part.type, text: part.text };
+  return projectActivityPart(part);
+}
+
 function projectMessages(data: unknown): unknown | AllowlistError {
   if (!Array.isArray(data)) return new AllowlistError('OpenCode session messages result must be an array');
   return data.flatMap((message) => {
@@ -287,7 +400,10 @@ function projectMessages(data: unknown): unknown | AllowlistError {
     return [
       {
         info: { id, sessionID, role },
-        parts: parts.filter(isTextPart).map((part) => ({ type: part.type, text: part.text })),
+        parts: parts.flatMap((part) => {
+          const projected = projectMessagePart(part);
+          return projected === null ? [] : [projected];
+        }),
       },
     ];
   });

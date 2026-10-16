@@ -203,6 +203,383 @@ describe('allowlist', () => {
     }
   });
 
+  it('projects reasoning, edit, patch, and task parts without tool output or cwd', async () => {
+    const mocks = createClient();
+    mocks.messages.mockResolvedValue({
+      data: [
+        {
+          info: { id: 'message-1', sessionID: 'session-1', role: 'assistant' },
+          parts: [
+            {
+              type: 'reasoning',
+              id: 'reason-1',
+              text: 'Reasoning text',
+              time: { start: 5, end: 15, extra: true },
+            },
+            {
+              type: 'tool',
+              id: 'edit-1',
+              tool: 'edit',
+              cwd: '/secret/cwd',
+              state: {
+                status: 'completed',
+                title: 'Update file',
+                input: { filePath: '/host/project/file.ts', path: '/ignored.ts' },
+                output: 'LEAKED_TOOL_RESULT',
+                raw: 'LEAKED_RAW',
+                error: 'LEAKED_ERROR',
+              },
+            },
+            {
+              type: 'patch',
+              id: 'patch-1',
+              files: ['/host/project/patched.ts', 1, { path: '/nope' }],
+            },
+            {
+              type: 'tool',
+              id: 'task-1',
+              tool: 'task',
+              state: {
+                status: 'running',
+                title: 'Explore',
+                input: {
+                  subagent_type: 'explore',
+                  agent: 'ignored-agent',
+                  description: 'Find files',
+                  prompt: 'LEAKED_PROMPT_BODY',
+                },
+                metadata: { sessionId: 'child-ses-1', sessionID: 'ignored-session' },
+                output: 'LEAKED_TOOL_RESULT',
+              },
+            },
+            {
+              type: 'tool',
+              callID: 'task-call',
+              tool: 'task',
+              state: {
+                status: 'completed',
+                title: 'Fix hook mapping leak',
+                input: { subagent_type: 'forge' },
+                metadata: { sessionID: 'child-from-call' },
+              },
+            },
+            {
+              type: 'tool',
+              id: 'bash-1',
+              tool: 'bash',
+              cwd: '/secret/cwd',
+              state: {
+                status: 'completed',
+                title: 'ls',
+                input: { command: 'ls', cwd: '/secret/cwd' },
+                output: 'listed files',
+                raw: 'LEAKED_RAW',
+                error: { message: 'LEAKED_ERROR' },
+              },
+            },
+          ],
+        },
+      ],
+      error: undefined,
+    });
+
+    const result = await executeAllowedAction(mocks.client, {
+      type: 'session.messages',
+      sessionID: 'session-1',
+    });
+    expect(result).toStrictEqual({
+      type: 'session.messages',
+      value: [
+        {
+          info: { id: 'message-1', sessionID: 'session-1', role: 'assistant' },
+          parts: [
+            {
+              type: 'reasoning',
+              id: 'reason-1',
+              text: 'Reasoning text',
+              time: { start: 5, end: 15 },
+            },
+            {
+              type: 'tool',
+              id: 'edit-1',
+              tool: 'edit',
+              status: 'completed',
+              title: 'Update file',
+              path: '/host/project/file.ts',
+            },
+            { type: 'patch', id: 'patch-1', files: ['/host/project/patched.ts'] },
+            {
+              type: 'tool',
+              id: 'task-1',
+              tool: 'task',
+              status: 'running',
+              title: 'Explore',
+              agent: 'explore',
+              description: 'Find files',
+              childSessionId: 'child-ses-1',
+            },
+            {
+              type: 'tool',
+              id: 'task-call',
+              tool: 'task',
+              status: 'completed',
+              title: 'Fix hook mapping leak',
+              agent: 'forge',
+              childSessionId: 'child-from-call',
+            },
+            {
+              type: 'tool',
+              id: 'bash-1',
+              tool: 'bash',
+              status: 'completed',
+              title: 'ls',
+              output: 'listed files',
+            },
+          ],
+        },
+      ],
+    });
+    const serialized = JSON.stringify(result);
+    for (const forbidden of [
+      'LEAKED_TOOL_RESULT',
+      'LEAKED_RAW',
+      'LEAKED_ERROR',
+      'LEAKED_PROMPT_BODY',
+      '/secret/cwd',
+      'cwd',
+      'directory',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
+  it('projects edit metadata.diff and filediff counts without oldString', async () => {
+    const mocks = createClient();
+    const diff = '@@ -1 +1 @@\n-removed line\n+added line\n';
+    mocks.messages.mockResolvedValue({
+      data: [
+        {
+          info: { id: 'message-1', sessionID: 'session-1', role: 'assistant' },
+          parts: [
+            {
+              type: 'tool',
+              id: 'edit-1',
+              tool: 'edit',
+              state: {
+                status: 'completed',
+                title: 'Update file',
+                input: {
+                  filePath: '/host/project/file.ts',
+                  oldString: 'LEAKED_OLD_STRING',
+                  newString: 'LEAKED_NEW_STRING',
+                },
+                output: 'LEAKED_TOOL_RESULT',
+                metadata: {
+                  diff,
+                  diagnostics: [{ message: 'LEAKED_DIAGNOSTIC' }],
+                  filediff: { additions: 1, deletions: 1, patch: 'ignored patch' },
+                },
+              },
+            },
+            {
+              type: 'tool',
+              id: 'write-1',
+              tool: 'write',
+              state: {
+                status: 'completed',
+                input: { filePath: '/host/project/new.ts', oldString: 'LEAKED_OLD_STRING' },
+                metadata: {
+                  filediff: {
+                    patch: '@@ -0,0 +1 @@\n+created\n',
+                    additions: 2,
+                    deletions: 0,
+                    diagnostics: ['LEAKED_DIAGNOSTIC'],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+      error: undefined,
+    });
+
+    const result = await executeAllowedAction(mocks.client, {
+      type: 'session.messages',
+      sessionID: 'session-1',
+    });
+
+    expect(result).toStrictEqual({
+      type: 'session.messages',
+      value: [
+        {
+          info: { id: 'message-1', sessionID: 'session-1', role: 'assistant' },
+          parts: [
+            {
+              type: 'tool',
+              id: 'edit-1',
+              tool: 'edit',
+              status: 'completed',
+              title: 'Update file',
+              path: '/host/project/file.ts',
+              diff,
+              additions: 1,
+              deletions: 1,
+            },
+            {
+              type: 'tool',
+              id: 'write-1',
+              tool: 'write',
+              status: 'completed',
+              path: '/host/project/new.ts',
+              diff: '@@ -0,0 +1 @@\n+created\n',
+              additions: 2,
+              deletions: 0,
+            },
+          ],
+        },
+      ],
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).toContain(JSON.stringify(diff).slice(1, -1));
+    expect(serialized).not.toContain('oldString');
+    expect(serialized).not.toContain('LEAKED_OLD_STRING');
+    expect(serialized).not.toContain('newString');
+    expect(serialized).not.toContain('LEAKED_NEW_STRING');
+    expect(serialized).not.toContain('LEAKED_DIAGNOSTIC');
+    expect(serialized).not.toContain('diagnostics');
+  });
+
+  it('projects bash, read, and grep without cwd, raw, or a duplicate command', async () => {
+    const mocks = createClient();
+    const longOutput = 'x'.repeat(12_001);
+    mocks.messages.mockResolvedValue({
+      data: [
+        {
+          info: { id: 'message-1', sessionID: 'session-1', role: 'assistant' },
+          parts: [
+            {
+              type: 'tool',
+              id: 'bash-title',
+              tool: 'bash',
+              cwd: '/secret/cwd',
+              state: {
+                status: 'completed',
+                title: 'ls',
+                input: { command: 'ls -la', cwd: '/secret/cwd' },
+                output: 'listed',
+                raw: 'LEAKED_RAW',
+              },
+            },
+            {
+              type: 'tool',
+              id: 'bash-command',
+              tool: 'bash',
+              state: {
+                status: 'completed',
+                input: { command: 'pwd' },
+                error: { message: 'LEAKED_ERROR_OBJECT' },
+              },
+            },
+            {
+              type: 'tool',
+              id: 'bash-error',
+              tool: 'bash',
+              state: { status: 'error', error: 'command failed' },
+            },
+            {
+              type: 'tool',
+              id: 'bash-long',
+              tool: 'bash',
+              state: { status: 'completed', title: 'cat', output: longOutput },
+            },
+            {
+              type: 'tool',
+              id: 'read-1',
+              tool: 'read',
+              state: { status: 'completed', title: 'Read file' },
+            },
+            {
+              type: 'tool',
+              id: 'grep-1',
+              tool: 'grep',
+              state: { status: 'completed', output: 'match' },
+            },
+          ],
+        },
+      ],
+      error: undefined,
+    });
+
+    const result = await executeAllowedAction(mocks.client, {
+      type: 'session.messages',
+      sessionID: 'session-1',
+    });
+
+    expect(result).toStrictEqual({
+      type: 'session.messages',
+      value: [
+        {
+          info: { id: 'message-1', sessionID: 'session-1', role: 'assistant' },
+          parts: [
+            {
+              type: 'tool',
+              id: 'bash-title',
+              tool: 'bash',
+              status: 'completed',
+              title: 'ls',
+              output: 'listed',
+            },
+            {
+              type: 'tool',
+              id: 'bash-command',
+              tool: 'bash',
+              status: 'completed',
+              title: 'pwd',
+            },
+            {
+              type: 'tool',
+              id: 'bash-error',
+              tool: 'bash',
+              status: 'error',
+              title: 'bash',
+              output: 'command failed',
+            },
+            {
+              type: 'tool',
+              id: 'bash-long',
+              tool: 'bash',
+              status: 'completed',
+              title: 'cat',
+              output: 'x'.repeat(12_000),
+            },
+            {
+              type: 'tool',
+              id: 'read-1',
+              tool: 'read',
+              status: 'completed',
+              title: 'Read file',
+            },
+            {
+              type: 'tool',
+              id: 'grep-1',
+              tool: 'grep',
+              status: 'completed',
+              title: 'grep',
+              output: 'match',
+            },
+          ],
+        },
+      ],
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('cwd');
+    expect(serialized).not.toContain('LEAKED_RAW');
+    expect(serialized).not.toContain('LEAKED_ERROR_OBJECT');
+    expect(serialized).not.toContain('ls -la');
+    expect(serialized).not.toContain(longOutput);
+  });
+
   it('skips malformed session message records and parts', async () => {
     const mocks = createClient();
     mocks.messages.mockResolvedValue({
@@ -697,7 +1074,10 @@ describe('allowlist', () => {
         parts: [{ type: 'text', text: 'hello' }],
       },
     });
-    expect(mocks.promptAsync.mock.calls[0]?.[0]?.body).not.toHaveProperty('variant');
+    const [promptCall] = mocks.promptAsync.mock.calls as ReadonlyArray<
+      readonly [{ body?: object }?]
+    >;
+    expect(promptCall?.[0]?.body).not.toHaveProperty('variant');
   });
 
   it('sends a non-empty variant on the prompt_async body and not on the model', async () => {

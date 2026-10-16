@@ -3,13 +3,20 @@ import type { NormalizedEvent, PermissionDecision } from '@coderelay/protocol';
 import { SessionServiceError } from '@/modules/session/domain/errors/session-service.error';
 import type {
   ChatMessage,
+  EditCard,
   ModelChoice,
   ModelRef,
   PermissionRequest,
   ProjectSummary,
+  SessionPollResult,
   SessionStatus,
   SessionSummary,
+  SubagentRow,
+  TextTranscriptItem,
+  ToolRow,
+  TranscriptItem,
 } from '@/modules/session/domain/entities/session';
+import { formatSubagentLabel, subagentTitle } from '@/modules/session/domain/entities/session';
 import { sessionService } from '@/modules/session/services/session.service';
 
 /** How often the hook drains host events and refreshes the selected history. */
@@ -21,7 +28,8 @@ export interface UseSessionResult {
   selectedProjectKey: string | null;
   projectSessions: SessionSummary[];
   selectedSessionId: string | null;
-  messages: ChatMessage[];
+  transcript: TranscriptItem[];
+  childSessionId: string | null;
   permissions: PermissionRequest[];
   models: ModelChoice[];
   selectedModel: ModelChoice | null;
@@ -36,6 +44,9 @@ export interface UseSessionResult {
   sendPrompt: (text: string) => Promise<void>;
   abort: () => Promise<void>;
   replyToPermission: (permissionID: string, decision: PermissionDecision) => Promise<void>;
+  openChildSession: (sessionID: string) => Promise<void>;
+  openTaskRow: (row: SubagentRow) => Promise<void>;
+  closeChildSession: () => void;
   refresh: () => void;
 }
 
@@ -87,20 +98,99 @@ function readStatus(properties: Record<string, unknown>): SessionStatus | null {
   return null;
 }
 
-function readPartUpdate(
-  properties: Record<string, unknown>,
-  selectedSessionId: string | null,
-): ChatMessage | null {
-  if (selectedSessionId === null) return null;
-  const part = properties['part'];
-  if (!isRecord(part)) return null;
-  if (part['type'] !== 'text') return null;
-  const id = readString(part, 'messageID');
-  const sessionId = readString(part, 'sessionID');
-  const text = readString(part, 'text');
-  if (id === null || sessionId === null || text === null) return null;
-  if (sessionId !== selectedSessionId) return null;
-  return { id, sessionId, role: 'assistant', text };
+function toTextItem(message: ChatMessage): TextTranscriptItem {
+  return {
+    kind: 'text',
+    id: message.id,
+    sessionId: message.sessionId,
+    role: message.role,
+    text: message.text,
+  };
+}
+
+function readPollTranscript(result: SessionPollResult, sessionId: string): TranscriptItem[] {
+  const source = result.items ?? result.messages.map(toTextItem);
+  return source.filter((item) => item.sessionId === sessionId);
+}
+
+function preserveOmittedTaskFields(
+  current: TranscriptItem[],
+  incoming: TranscriptItem[],
+): TranscriptItem[] {
+  const currentById = new Map(current.map((item) => [item.id, item]));
+  return incoming.map((item) => {
+    const existing = currentById.get(item.id);
+    if (item.kind === 'edit') {
+      if (existing === undefined || existing.kind !== 'edit') return item;
+      return mergeEditCard(existing, item);
+    }
+    if (item.kind === 'tool') {
+      if (existing === undefined || existing.kind !== 'tool') return item;
+      return mergeToolRow(existing, item);
+    }
+    if (item.kind !== 'task') return item;
+    if (existing === undefined || existing.kind !== 'task') return item;
+    const childSessionId = item.childSessionId ?? existing.childSessionId;
+    const agent = item.agent ?? existing.agent;
+    if (childSessionId === item.childSessionId && agent === item.agent) return item;
+    const preserved: SubagentRow = { ...item };
+    if (childSessionId !== undefined) preserved.childSessionId = childSessionId;
+    if (agent !== undefined) preserved.agent = agent;
+    return preserved;
+  });
+}
+
+function transcriptItemsEqual(current: TranscriptItem[], next: TranscriptItem[]): boolean {
+  if (current.length !== next.length) return false;
+  for (let index = 0; index < current.length; index += 1) {
+    const left = current[index];
+    const right = next[index];
+    if (left === undefined || right === undefined) return false;
+    if (left.id !== right.id || left.kind !== right.kind) return false;
+    if (left.kind === 'text' && right.kind === 'text') {
+      if (left.text !== right.text) return false;
+      continue;
+    }
+    if (left.kind === 'reasoning' && right.kind === 'reasoning') {
+      if (left.text !== right.text) return false;
+      continue;
+    }
+    if (left.kind === 'edit' && right.kind === 'edit') {
+      if (
+        left.status !== right.status ||
+        left.path !== right.path ||
+        left.diff !== right.diff ||
+        left.additions !== right.additions ||
+        left.deletions !== right.deletions
+      ) {
+        return false;
+      }
+      continue;
+    }
+    if (left.kind === 'tool' && right.kind === 'tool') {
+      if (
+        left.title !== right.title ||
+        left.status !== right.status ||
+        left.output !== right.output
+      ) {
+        return false;
+      }
+      continue;
+    }
+    if (left.kind === 'task' && right.kind === 'task') {
+      if (
+        left.label !== right.label ||
+        left.status !== right.status ||
+        left.childSessionId !== right.childSessionId ||
+        left.agent !== right.agent
+      ) {
+        return false;
+      }
+      continue;
+    }
+    return false;
+  }
+  return true;
 }
 
 function readPermissionRecord(
@@ -126,17 +216,80 @@ function readPermission(properties: Record<string, unknown>): PermissionRequest 
  * unless the event carries more text, which keeps streaming output snappy
  * without ever dropping a message the host already reported.
  */
-function mergeMessages(history: ChatMessage[], updates: ChatMessage[]): ChatMessage[] {
+function mergeEditCard(existing: EditCard, update: EditCard): EditCard {
+  const diff = update.diff ?? existing.diff;
+  const additions = update.additions ?? existing.additions;
+  const deletions = update.deletions ?? existing.deletions;
+  if (
+    diff === update.diff &&
+    additions === update.additions &&
+    deletions === update.deletions
+  ) {
+    return update;
+  }
+  const merged: EditCard = { ...update };
+  if (diff !== undefined) merged.diff = diff;
+  if (additions !== undefined) merged.additions = additions;
+  if (deletions !== undefined) merged.deletions = deletions;
+  return merged;
+}
+
+function mergeToolRow(existing: ToolRow, update: ToolRow): ToolRow {
+  const output = update.output ?? existing.output;
+  if (output === update.output) return update;
+  const merged: ToolRow = { ...update };
+  if (output !== undefined) merged.output = output;
+  return merged;
+}
+
+function mergeTaskRow(existing: SubagentRow, update: SubagentRow): SubagentRow {
+  const agent = update.agent ?? existing.agent;
+  const childSessionId = update.childSessionId ?? existing.childSessionId;
+  const title = update.agent === undefined ? update.label : subagentTitle(update.agent, update.label);
+  const label = agent === undefined ? update.label : formatSubagentLabel(agent, title);
+  const merged: SubagentRow = {
+    kind: 'task',
+    id: update.id,
+    sessionId: update.sessionId,
+    status: update.status,
+    label,
+  };
+  if (agent !== undefined) merged.agent = agent;
+  if (update.title !== undefined) merged.title = update.title;
+  else if (existing.title !== undefined) merged.title = existing.title;
+  if (childSessionId !== undefined) merged.childSessionId = childSessionId;
+  return merged;
+}
+
+function mergeTranscript(history: TranscriptItem[], updates: TranscriptItem[]): TranscriptItem[] {
   if (updates.length === 0) return history;
-  const byId = new Map<string, ChatMessage>();
-  for (const message of history) {
-    byId.set(message.id, message);
+  const byId = new Map<string, TranscriptItem>();
+  for (const item of history) {
+    byId.set(item.id, item);
   }
   for (const update of updates) {
     const existing = byId.get(update.id);
-    if (existing === undefined || update.text.length > existing.text.length) {
-      byId.set(update.id, update);
+    if (
+      existing !== undefined &&
+      existing.kind === 'text' &&
+      update.kind === 'text' &&
+      update.text.length <= existing.text.length
+    ) {
+      continue;
     }
+    if (existing !== undefined && existing.kind === 'task' && update.kind === 'task') {
+      byId.set(update.id, mergeTaskRow(existing, update));
+      continue;
+    }
+    if (existing !== undefined && existing.kind === 'edit' && update.kind === 'edit') {
+      byId.set(update.id, mergeEditCard(existing, update));
+      continue;
+    }
+    if (existing !== undefined && existing.kind === 'tool' && update.kind === 'tool') {
+      byId.set(update.id, mergeToolRow(existing, update));
+      continue;
+    }
+    byId.set(update.id, update);
   }
   return [...byId.values()];
 }
@@ -152,7 +305,9 @@ export function useSession(): UseSessionResult {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [parentTranscript, setParentTranscript] = useState<TranscriptItem[]>([]);
+  const [childTranscript, setChildTranscript] = useState<TranscriptItem[] | null>(null);
+  const [childSessionId, setChildSessionId] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<PermissionRequest[]>([]);
   const [models, setModels] = useState<ModelChoice[]>([]);
   const [selectedModel, setSelectedModel] = useState<ModelChoice | null>(null);
@@ -162,6 +317,8 @@ export function useSession(): UseSessionResult {
   const [error, setError] = useState<string | null>(null);
 
   const selectedSessionIdRef = useRef<string | null>(null);
+  const childSessionIdRef = useRef<string | null>(null);
+  const childRequestRef = useRef(0);
   const selectedModelRef = useRef<ModelChoice | null>(null);
   const selectedVariantRef = useRef<string | null>(null);
   const modelsRef = useRef<ModelChoice[]>([]);
@@ -173,6 +330,10 @@ export function useSession(): UseSessionResult {
     selectedSessionIdRef.current = selectedSessionId;
   }, [selectedSessionId]);
 
+  useEffect(() => {
+    childSessionIdRef.current = childSessionId;
+  }, [childSessionId]);
+
   const projectSessions = useMemo(
     (): SessionSummary[] =>
       sessions.filter((summary) => summary.projectKey === selectedProjectKey),
@@ -182,7 +343,8 @@ export function useSession(): UseSessionResult {
   const applyEvents = useCallback((events: NormalizedEvent[]): void => {
     if (events.length === 0) return;
     const selected = selectedSessionIdRef.current;
-    const messageUpdates: ChatMessage[] = [];
+    const parentUpdates: TranscriptItem[] = [];
+    const childUpdates: TranscriptItem[] = [];
     const asked: PermissionRequest[] = [];
     const replied: string[] = [];
     let nextStatus: SessionStatus | null = null;
@@ -215,8 +377,11 @@ export function useSession(): UseSessionResult {
           break;
         }
         case 'message.part.updated': {
-          const message = readPartUpdate(event.properties, selected);
-          if (message !== null) messageUpdates.push(message);
+          const item = sessionService.readTranscriptUpdate(event, selected);
+          if (item === null) break;
+          if (selected !== null && item.sessionId === selected) parentUpdates.push(item);
+          const openChild = childSessionIdRef.current;
+          if (openChild !== null && item.sessionId === openChild) childUpdates.push(item);
           break;
         }
         default:
@@ -225,8 +390,11 @@ export function useSession(): UseSessionResult {
     }
 
     if (nextStatus !== null) setStatus(nextStatus);
-    if (messageUpdates.length > 0) {
-      setMessages((current) => mergeMessages(current, messageUpdates));
+    if (parentUpdates.length > 0) {
+      setParentTranscript((current) => mergeTranscript(current, parentUpdates));
+    }
+    if (childUpdates.length > 0) {
+      setChildTranscript((current) => mergeTranscript(current ?? [], childUpdates));
     }
     if (asked.length > 0) {
       setPermissions((current) => {
@@ -321,7 +489,14 @@ export function useSession(): UseSessionResult {
       setError(null);
       // Defensively drop any host message that does not belong to the selected
       // session so a mis-scoped host result can never render as this session.
-      setMessages(result.messages.filter((message) => message.sessionId === selectedSessionId));
+      // An unchanged poll must keep the same array so the list does not reflow.
+      setParentTranscript((current) => {
+        const next = preserveOmittedTaskFields(
+          current,
+          readPollTranscript(result, selectedSessionId),
+        );
+        return transcriptItemsEqual(current, next) ? current : next;
+      });
       applyEvents(result.events);
     };
     void poll();
@@ -338,8 +513,12 @@ export function useSession(): UseSessionResult {
     (key: string): void => {
       if (selectedProjectKey === key) return;
       selectedSessionIdRef.current = null;
+      childSessionIdRef.current = null;
+      childRequestRef.current += 1;
       setSelectedSessionId(null);
-      setMessages([]);
+      setParentTranscript([]);
+      setChildTranscript(null);
+      setChildSessionId(null);
       setPermissions([]);
       setError(null);
       setStatus('idle');
@@ -350,8 +529,12 @@ export function useSession(): UseSessionResult {
 
   const selectSession = useCallback((sessionID: string): void => {
     if (sessionID === selectedSessionIdRef.current) return;
+    childSessionIdRef.current = null;
+    childRequestRef.current += 1;
     setSelectedSessionId(sessionID);
-    setMessages([]);
+    setParentTranscript([]);
+    setChildTranscript(null);
+    setChildSessionId(null);
     setPermissions([]);
     setError(null);
     setStatus('idle');
@@ -429,9 +612,63 @@ export function useSession(): UseSessionResult {
     [applyEvents],
   );
 
+  const openChildSession = useCallback(async (sessionID: string): Promise<void> => {
+    if (sessionID.length === 0) return;
+    const request = childRequestRef.current + 1;
+    childRequestRef.current = request;
+    const result = await sessionService.fetchMessages(sessionID);
+    if (request !== childRequestRef.current) return;
+    if (result instanceof SessionServiceError) {
+      setError(result.message);
+      return;
+    }
+    setError(null);
+    setChildSessionId(sessionID);
+    setChildTranscript(readPollTranscript(result, sessionID));
+    applyEvents(result.events);
+  }, [applyEvents]);
+
+  const openTaskRow = useCallback(async (row: SubagentRow): Promise<void> => {
+    const known = row.childSessionId;
+    if (known !== undefined && known.length > 0) {
+      await openChildSession(known);
+      return;
+    }
+    const ownerId = row.sessionId;
+    const request = childRequestRef.current;
+    const result = await sessionService.fetchMessages(ownerId);
+    if (request !== childRequestRef.current) return;
+    if (result instanceof SessionServiceError) {
+      setError(result.message);
+      return;
+    }
+    const items = readPollTranscript(result, ownerId);
+    if (ownerId === childSessionIdRef.current) {
+      setChildTranscript(items);
+    } else if (ownerId === selectedSessionIdRef.current) {
+      setParentTranscript(items);
+    } else {
+      return;
+    }
+    applyEvents(result.events);
+    const match = items.find((item) => item.kind === 'task' && item.id === row.id);
+    const childId = match !== undefined && match.kind === 'task' ? match.childSessionId : undefined;
+    if (childId === undefined || childId.length === 0) return;
+    await openChildSession(childId);
+  }, [applyEvents, openChildSession]);
+
+  const closeChildSession = useCallback((): void => {
+    childRequestRef.current += 1;
+    childSessionIdRef.current = null;
+    setChildSessionId(null);
+    setChildTranscript(null);
+  }, []);
+
   const refresh = useCallback((): void => {
     void loadSessions();
   }, [loadSessions]);
+
+  const transcript = childTranscript ?? parentTranscript;
 
   return {
     sessions,
@@ -439,7 +676,8 @@ export function useSession(): UseSessionResult {
     selectedProjectKey,
     projectSessions,
     selectedSessionId,
-    messages,
+    transcript,
+    childSessionId,
     permissions,
     models,
     selectedModel,
@@ -454,6 +692,9 @@ export function useSession(): UseSessionResult {
     sendPrompt,
     abort,
     replyToPermission,
+    openChildSession,
+    openTaskRow,
+    closeChildSession,
     refresh,
   };
 }

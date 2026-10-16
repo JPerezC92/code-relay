@@ -24,6 +24,85 @@ export interface ChatMessage {
   text: string;
 }
 
+/** A text bubble in the activity transcript. Same fields as `ChatMessage`. */
+export interface TextTranscriptItem {
+  kind: 'text';
+  id: string;
+  sessionId: string;
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+/**
+ * A collapsed reasoning row. `start` and `end` are host timestamps in
+ * milliseconds. `end` is absent while the host is still thinking.
+ */
+export interface ReasoningRow {
+  kind: 'reasoning';
+  id: string;
+  sessionId: string;
+  text: string;
+  start?: number;
+  end?: number;
+}
+
+/** An edit, write, or apply_patch card. Patch parts are not cards. */
+export interface EditCard {
+  kind: 'edit';
+  id: string;
+  sessionId: string;
+  tool: string;
+  status: string;
+  path: string;
+  diff?: string;
+  additions?: number;
+  deletions?: number;
+}
+
+/** Visible task label. Capitalizes the agent and keeps a title-only label when absent. */
+export function formatSubagentLabel(agent: string, title: string): string {
+  const name = agent.length === 0 ? agent : agent.charAt(0).toUpperCase() + agent.slice(1);
+  return `${name} Task – ${title}`;
+}
+
+/**
+ * Title portion of a task label. A label already formatted with `agent` is
+ * unwrapped so a later merge can reapply a preserved agent without doubling it.
+ */
+export function subagentTitle(agent: string | undefined, label: string): string {
+  if (agent === undefined || agent.length === 0) return label;
+  const prefix = formatSubagentLabel(agent, '');
+  return label.startsWith(prefix) ? label.slice(prefix.length) : label;
+}
+
+/**
+ * A non-file tool row. `title` is the visible line. `output` is absent when
+ * the host sent none, so the row stays visible and is not expandable.
+ */
+export interface ToolRow {
+  kind: 'tool';
+  id: string;
+  sessionId: string;
+  tool: string;
+  status: string;
+  title: string;
+  output?: string;
+}
+
+/** A subagent row. Pressable when it has an agent, a title, or a child session. */
+export interface SubagentRow {
+  kind: 'task';
+  id: string;
+  sessionId: string;
+  label: string;
+  status: string;
+  agent?: string;
+  title?: string;
+  childSessionId?: string;
+}
+
+export type TranscriptItem = TextTranscriptItem | ReasoningRow | EditCard | ToolRow | SubagentRow;
+
 export interface PermissionRequest {
   id: string;
   sessionId: string;
@@ -38,6 +117,12 @@ export interface SessionListResult {
 
 export interface SessionPollResult {
   messages: ChatMessage[];
+  /**
+   * Ordered text, reasoning, edit, tool, and subagent items. Optional so existing
+   * callers that only supply text messages still render. The service always
+   * sets it.
+   */
+  items?: TranscriptItem[];
   events: NormalizedEvent[];
 }
 

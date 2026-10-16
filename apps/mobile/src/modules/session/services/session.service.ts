@@ -11,20 +11,27 @@
  * which is `once | reject` only. The runtime narrowing below keeps any forged
  * standing-grant value from ever reaching the gateway.
  */
-import type { PermissionDecision } from '@coderelay/protocol';
+import type { NormalizedEvent, PermissionDecision } from '@coderelay/protocol';
 import { GatewayClientError, getGatewayClient } from '@/shared/transport/gateway-client';
 import type { GatewayClient } from '@/shared/transport/gateway-client';
 import type {
   ChatMessage,
+  EditCard,
   ModelChoice,
   ModelListResult,
   ModelRef,
   ProjectSummary,
+  ReasoningRow,
   SessionActionResult,
   SessionListResult,
   SessionPollResult,
   SessionSummary,
+  SubagentRow,
+  TextTranscriptItem,
+  ToolRow,
+  TranscriptItem,
 } from '@/modules/session/domain/entities/session';
+import { formatSubagentLabel } from '@/modules/session/domain/entities/session';
 import { SessionServiceError } from '@/modules/session/domain/errors/session-service.error';
 
 const gateway: GatewayClient = getGatewayClient();
@@ -159,9 +166,104 @@ function collectText(parts: unknown[]): string {
   return text;
 }
 
-function parseMessages(value: unknown): ChatMessage[] | null {
+const FILE_ACTIVITY_TOOLS = new Set(['edit', 'write', 'apply_patch']);
+
+function readOptionalNumber(record: Record<string, unknown> | null, key: string): number | undefined {
+  if (record === null) return undefined;
+  const value = record[key];
+  return typeof value === 'number' ? value : undefined;
+}
+
+/**
+ * Maps one projected activity part into a chat row. Patch parts are dropped
+ * because the edit tool card already shows that file. Other tools become a
+ * tool row. Raw, cwd, and error objects are never read.
+ */
+function parseProjectedActivity(part: unknown, sessionId: string): TranscriptItem | null {
+  if (!isRecord(part)) return null;
+  const id = readString(part, 'id');
+  if (id === null || sessionId.length === 0) return null;
+  if (part['type'] === 'reasoning') {
+    const text = readString(part, 'text');
+    if (text === null) return null;
+    const time = isRecord(part['time']) ? part['time'] : null;
+    const row: ReasoningRow = { kind: 'reasoning', id, sessionId, text };
+    const start = readOptionalNumber(time, 'start');
+    const end = readOptionalNumber(time, 'end');
+    if (start !== undefined) row.start = start;
+    if (end !== undefined) row.end = end;
+    return row;
+  }
+  if (part['type'] === 'patch') return null;
+  if (part['type'] !== 'tool') return null;
+  const tool = readString(part, 'tool');
+  if (tool === null) return null;
+  const status = readString(part, 'status') ?? '';
+  if (FILE_ACTIVITY_TOOLS.has(tool)) {
+    const card: EditCard = {
+      kind: 'edit',
+      id,
+      sessionId,
+      tool,
+      status,
+      path: readString(part, 'path') ?? '',
+    };
+    const diff = readString(part, 'diff');
+    if (diff !== null) card.diff = diff;
+    const additions = readOptionalNumber(part, 'additions');
+    const deletions = readOptionalNumber(part, 'deletions');
+    if (additions !== undefined) card.additions = additions;
+    if (deletions !== undefined) card.deletions = deletions;
+    return card;
+  }
+  if (tool !== 'task') {
+    const row: ToolRow = {
+      kind: 'tool',
+      id,
+      sessionId,
+      tool,
+      status,
+      title: readString(part, 'title') ?? tool,
+    };
+    const output = readString(part, 'output');
+    if (output !== null && output.length > 0) row.output = output;
+    return row;
+  }
+  const title = readString(part, 'title');
+  const description = readString(part, 'description');
+  const agent = readString(part, 'agent');
+  const titleText = title ?? description ?? agent ?? 'Subagent';
+  const label =
+    agent !== null && agent.length > 0
+      ? formatSubagentLabel(agent, title ?? description ?? 'Subagent')
+      : titleText;
+  const row: SubagentRow = { kind: 'task', id, sessionId, label, status };
+  if (agent !== null && agent.length > 0) row.agent = agent;
+  if (title !== null) row.title = title;
+  const childSessionId = readString(part, 'childSessionId');
+  if (childSessionId !== null) row.childSessionId = childSessionId;
+  return row;
+}
+
+function parsePartUpdate(properties: Record<string, unknown>): TranscriptItem | null {
+  const part = properties['part'];
+  if (!isRecord(part)) return null;
+  const sessionId = readString(part, 'sessionID');
+  if (sessionId === null) return null;
+  if (part['type'] === 'text') {
+    const id = readString(part, 'messageID');
+    const text = readString(part, 'text');
+    if (id === null || text === null) return null;
+    const item: TextTranscriptItem = { kind: 'text', id, sessionId, role: 'assistant', text };
+    return item;
+  }
+  return parseProjectedActivity(part, sessionId);
+}
+
+function parseMessages(value: unknown): { messages: ChatMessage[]; items: TranscriptItem[] } | null {
   if (!Array.isArray(value)) return null;
   const messages: ChatMessage[] = [];
+  const items: TranscriptItem[] = [];
   for (const entry of value) {
     if (!isRecord(entry)) continue;
     const info = entry['info'];
@@ -173,10 +275,27 @@ function parseMessages(value: unknown): ChatMessage[] | null {
     const sessionId = readString(info, 'sessionID');
     if (id === null || sessionId === null) continue;
     const text = Array.isArray(parts) ? collectText(parts) : '';
-    if (text.length === 0) continue;
-    messages.push({ id, sessionId, role, text });
+    if (text.length > 0) {
+      const message: ChatMessage = { id, sessionId, role, text };
+      messages.push(message);
+    }
+    if (!Array.isArray(parts)) continue;
+    let textInserted = false;
+    for (const part of parts) {
+      if (!isRecord(part)) continue;
+      if (part['type'] === 'text') {
+        if (!textInserted && text.length > 0) {
+          const textItem: TextTranscriptItem = { kind: 'text', id, sessionId, role, text };
+          items.push(textItem);
+          textInserted = true;
+        }
+        continue;
+      }
+      const activity = parseProjectedActivity(part, sessionId);
+      if (activity !== null) items.push(activity);
+    }
   }
-  return messages;
+  return { messages, items };
 }
 
 export const sessionService = {
@@ -209,11 +328,11 @@ export const sessionService = {
       if (outcome instanceof GatewayClientError) {
         return new SessionServiceError(outcome.message);
       }
-      const messages = parseMessages(outcome.result.value);
-      if (messages === null) {
+      const parsed = parseMessages(outcome.result.value);
+      if (parsed === null) {
         return new SessionServiceError('Host message list was malformed');
       }
-      return { messages, events: outcome.events };
+      return { messages: parsed.messages, items: parsed.items, events: outcome.events };
     } catch (error) {
       return toServiceError(error, 'Message fetch failed');
     }
@@ -272,6 +391,22 @@ export const sessionService = {
     } catch (error) {
       return toServiceError(error, 'Abort failed');
     }
+  },
+
+  /**
+   * Maps a live part event into a transcript row. Host part fields stay in this
+   * adapter. The selected session is accepted so the hook does not parse parts;
+   * rows for other sessions are still returned so a child view can route them.
+   */
+  readTranscriptUpdate(
+    event: NormalizedEvent,
+    selectedSessionId: string | null,
+  ): TranscriptItem | null {
+    if (event.name !== 'message.part.updated') return null;
+    const item = parsePartUpdate(event.properties);
+    if (item === null) return null;
+    if (selectedSessionId !== null && item.sessionId.length === 0) return null;
+    return item;
   },
 
   async replyToPermission(
