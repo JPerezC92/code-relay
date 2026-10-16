@@ -28,7 +28,6 @@ export interface UseSessionResult {
   selectedProjectKey: string | null;
   projectSessions: SessionSummary[];
   selectedSessionId: string | null;
-  messages: ChatMessage[];
   transcript: TranscriptItem[];
   childSessionId: string | null;
   permissions: PermissionRequest[];
@@ -293,15 +292,6 @@ function mergeTranscript(history: TranscriptItem[], updates: TranscriptItem[]): 
     byId.set(update.id, update);
   }
   return [...byId.values()];
-}
-
-function textMessages(items: TranscriptItem[]): ChatMessage[] {
-  const messages: ChatMessage[] = [];
-  for (const item of items) {
-    if (item.kind !== 'text') continue;
-    messages.push({ id: item.id, sessionId: item.sessionId, role: item.role, text: item.text });
-  }
-  return messages;
 }
 
 /**
@@ -686,7 +676,6 @@ export function useSession(): UseSessionResult {
     selectedProjectKey,
     projectSessions,
     selectedSessionId,
-    messages: textMessages(parentTranscript),
     transcript,
     childSessionId,
     permissions,
