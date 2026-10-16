@@ -53,6 +53,12 @@ interface RootSessionRecord {
   projectId: string;
 }
 
+/** A child session linked to its parent id. The child's own directory is never stored. */
+interface ChildSessionLink {
+  id: string;
+  parentID: string;
+}
+
 interface ProjectBucket {
   label: string;
   newestUpdatedAt: number | null;
@@ -85,6 +91,15 @@ function normalizeProjectRecord(raw: unknown): ProjectRecord | null {
   const worktree = readString(raw, 'worktree');
   if (id === undefined || worktree === undefined) return null;
   return { id, worktree };
+}
+
+function normalizeChildLink(raw: unknown): ChildSessionLink | null {
+  if (!isRecord(raw)) return null;
+  if (raw.parentID === undefined) return null;
+  const id = readString(raw, 'id');
+  const parentID = readString(raw, 'parentID');
+  if (id === undefined || parentID === undefined || parentID.length === 0) return null;
+  return { id, parentID };
 }
 
 function normalizeRootSessionRecord(raw: unknown): RootSessionRecord | null {
@@ -130,6 +145,8 @@ function projectLabelOf(path: string): string {
 export class SessionCatalog {
   private readonly client: OpenCodeCatalogClientLike;
   private readonly routes = new Map<string, string>();
+  /** Child session id → directory of the routed root named by parentID. */
+  private readonly childRootDirectories = new Map<string, string>();
 
   constructor(client: OpenCodeCatalogClientLike) {
     this.client = client;
@@ -139,12 +156,22 @@ export class SessionCatalog {
     return this.routes.get(sessionId) ?? null;
   }
 
+  /**
+   * Directory of the routed root that owns this child session.
+   * Null for roots, unknown ids, and children whose parentID is not a routed root.
+   * Never the child's own directory field, and never published on phone payloads.
+   */
+  lookupChildRootDirectory(sessionId: string): string | null {
+    return this.childRootDirectories.get(sessionId) ?? null;
+  }
+
   count(): number {
     return this.routes.size;
   }
 
   clear(): void {
     this.routes.clear();
+    this.childRootDirectories.clear();
   }
 
   async list(): Promise<SessionCatalogResult | SessionCatalogError> {
@@ -174,6 +201,7 @@ export class SessionCatalog {
       }
 
       const seenSessionIds = new Set<string>();
+      const childLinks: ChildSessionLink[] = [];
       for (const project of projects) {
         const sessionResult = await this.client.session.list({
           query: { directory: project.worktree },
@@ -184,6 +212,8 @@ export class SessionCatalog {
           return new SessionCatalogError('OpenCode session list data was not an array');
         }
         for (const raw of sessionData) {
+          const child = normalizeChildLink(raw);
+          if (child !== null) childLinks.push(child);
           const record = normalizeRootSessionRecord(raw);
           if (record === null) continue;
           if (seenSessionIds.has(record.id)) continue;
@@ -243,9 +273,20 @@ export class SessionCatalog {
           routes.set(record.id, record.directory);
         }
       }
+      const childRootDirectories = new Map<string, string>();
+      for (const child of childLinks) {
+        if (routes.has(child.id) || childRootDirectories.has(child.id)) continue;
+        const parentDirectory = routes.get(child.parentID);
+        if (parentDirectory === undefined) continue;
+        childRootDirectories.set(child.id, parentDirectory);
+      }
       this.routes.clear();
       for (const [sessionId, directory] of routes) {
         this.routes.set(sessionId, directory);
+      }
+      this.childRootDirectories.clear();
+      for (const [sessionId, directory] of childRootDirectories) {
+        this.childRootDirectories.set(sessionId, directory);
       }
       return { projects: catalogProjects, sessions: summaries };
     } catch {

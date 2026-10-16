@@ -128,6 +128,62 @@ describe('session-catalog', () => {
     expect(summaries[1]?.title).toBe('');
   });
 
+  it('maps a child to its routed root directory without routing the child itself', async () => {
+    const childDirectory = '/home/dev/alpha/child-private';
+    const harness = createCatalogHarness([{ id: 'proj-alpha', worktree: ALPHA_WORKTREE }], {
+      [ALPHA_WORKTREE]: rawSessions(
+        {
+          id: 'ses-root-1',
+          projectID: 'proj-alpha',
+          directory: ALPHA_WORKTREE,
+          updatedAt: 300,
+          title: 'Root one',
+        },
+        {
+          id: 'ses-child-1',
+          projectID: 'proj-alpha',
+          directory: childDirectory,
+          updatedAt: 900,
+          title: 'Child',
+          parentID: 'ses-root-1',
+        },
+        {
+          id: 'ses-grandchild',
+          projectID: 'proj-alpha',
+          directory: childDirectory,
+          updatedAt: 950,
+          parentID: 'ses-child-1',
+        },
+        {
+          id: 'ses-orphan',
+          projectID: 'proj-alpha',
+          directory: childDirectory,
+          updatedAt: 960,
+          parentID: 'ses-missing-root',
+        },
+        {
+          id: 'ses-child-empty',
+          projectID: 'proj-alpha',
+          directory: childDirectory,
+          updatedAt: 800,
+          parentID: '',
+        },
+      ),
+    });
+
+    const result = expectCatalog(await harness.catalog.list());
+
+    expect(result.sessions.map((summary) => summary.id)).toStrictEqual(['ses-root-1']);
+    expect(JSON.stringify(result)).not.toContain(childDirectory);
+    expect(harness.catalog.lookup('ses-child-1')).toBeNull();
+    expect(harness.catalog.lookup('ses-root-1')).toBe(ALPHA_WORKTREE);
+    expect(harness.catalog.lookupChildRootDirectory('ses-child-1')).toBe(ALPHA_WORKTREE);
+    expect(harness.catalog.lookupChildRootDirectory('ses-grandchild')).toBeNull();
+    expect(harness.catalog.lookupChildRootDirectory('ses-orphan')).toBeNull();
+    expect(harness.catalog.lookupChildRootDirectory('ses-child-empty')).toBeNull();
+    expect(harness.catalog.lookupChildRootDirectory('ses-root-1')).toBeNull();
+  });
+
   it('queries the session list once per project worktree', async () => {
     const harness = createCatalogHarness(
       [

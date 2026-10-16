@@ -99,7 +99,12 @@ const plugin: Plugin = async (input): Promise<Hooks> => {
       for await (const globalEvent of stream) {
         const sessionId = sessionRouteId(globalEvent.payload);
         if (sessionId === null) continue;
-        if (catalog.lookup(sessionId) === null) continue;
+        if (
+          catalog.lookup(sessionId) === null &&
+          catalog.lookupChildRootDirectory(sessionId) === null
+        ) {
+          continue;
+        }
         gateway.handleEvent(globalEvent.payload);
       }
     } catch {

@@ -12,6 +12,7 @@ import type {
   SessionListResult,
   SessionPollResult,
   SessionSummary,
+  TranscriptItem,
 } from '@/modules/session/domain/entities/session';
 import { SessionServiceError } from '@/modules/session/domain/errors/session-service.error';
 
@@ -28,21 +29,33 @@ const mockReplyToPermission = jest.fn<
   [string, string, 'once' | 'reject']
 >();
 
-jest.mock('@/modules/session/services/session.service', () => ({
-  sessionService: {
-    listSessions: () => mockListSessions(),
-    listModels: () => mockListModels(),
-    fetchMessages: (sessionID: string) => mockFetchMessages(sessionID),
-    sendPrompt: (
-      sessionID: string,
-      text: string,
-      model: { providerID: string; modelID: string; variant?: string },
-    ) => mockSendPrompt(sessionID, text, model),
-    abort: (sessionID: string) => mockAbort(sessionID),
-    replyToPermission: (sessionID: string, permissionID: string, decision: 'once' | 'reject') =>
-      mockReplyToPermission(sessionID, permissionID, decision),
-  },
-}));
+jest.mock('@/modules/session/services/session.service', () => {
+  const actual = jest.requireActual('@/modules/session/services/session.service') as {
+    sessionService: {
+      readTranscriptUpdate: (
+        event: NormalizedEvent,
+        selectedSessionId: string | null,
+      ) => TranscriptItem | null;
+    };
+  };
+  return {
+    sessionService: {
+      listSessions: () => mockListSessions(),
+      listModels: () => mockListModels(),
+      fetchMessages: (sessionID: string) => mockFetchMessages(sessionID),
+      sendPrompt: (
+        sessionID: string,
+        text: string,
+        model: { providerID: string; modelID: string; variant?: string },
+      ) => mockSendPrompt(sessionID, text, model),
+      abort: (sessionID: string) => mockAbort(sessionID),
+      replyToPermission: (sessionID: string, permissionID: string, decision: 'once' | 'reject') =>
+        mockReplyToPermission(sessionID, permissionID, decision),
+      readTranscriptUpdate: (event: NormalizedEvent, selectedSessionId: string | null) =>
+        actual.sessionService.readTranscriptUpdate(event, selectedSessionId),
+    },
+  };
+});
 
 /** Deterministic insets, deliberately distinct from the container's base 16px
  * padding so the padded composition is provable (top 24 + 16, bottom 48 + 16). */
@@ -183,6 +196,21 @@ function scrollAwayFromEnd(): Promise<void> {
     nativeEvent: {
       contentOffset: { x: 0, y: 0 },
       contentSize: { width: 320, height: 800 },
+      layoutMeasurement: { width: 320, height: 400 },
+    },
+  });
+}
+
+/** A drag gesture that stays at the bottom of the viewport. VirtualizedList
+ * reads nativeEvent before the screen's drag guard runs. */
+function fireHistoryDrag(
+  eventName: 'scrollBeginDrag' | 'scrollEndDrag',
+  height: number,
+): Promise<void> {
+  return fireEvent(screen.getByTestId('message-list'), eventName, {
+    nativeEvent: {
+      contentOffset: { x: 0, y: 0 },
+      contentSize: { width: 320, height },
       layoutMeasurement: { width: 320, height: 400 },
     },
   });
@@ -599,6 +627,23 @@ describe('ChatScreen', () => {
     expect(mockScrollToEndCalls).toEqual([{ animated: false }]);
   });
 
+  it('does not scroll to the end while the user is dragging the history', async () => {
+    await render(<ChatScreen />);
+    expect(await screen.findByText('Hello host')).toBeTruthy();
+    await fireHistoryContentSizeChange(240);
+
+    mockScrollToEndCalls.length = 0;
+    await fireHistoryDrag('scrollBeginDrag', 240);
+    await fireHistoryContentSizeChange(400);
+
+    expect(mockScrollToEndCalls).toEqual([]);
+
+    await fireHistoryDrag('scrollEndDrag', 400);
+    await fireHistoryContentSizeChange(480);
+
+    expect(mockScrollToEndCalls).toEqual([{ animated: false }]);
+  });
+
   it('does not follow new content after the user has scrolled away from the end', async () => {
     mockSendPrompt.mockResolvedValueOnce({
       events: [createStreamedTextEvent('Hello phone, streamed continuation')],
@@ -661,5 +706,208 @@ describe('ChatScreen', () => {
     await fireHistoryContentSizeChange(120);
 
     expect(mockScrollToEndCalls).toEqual([{ animated: false }]);
+  });
+
+  it('starts a reasoning row collapsed and reveals the body in the same list', async () => {
+    const items: TranscriptItem[] = [
+      { kind: 'text', id: 'message-user', sessionId: SESSION_ID, role: 'user', text: 'Hello host' },
+      {
+        kind: 'reasoning',
+        id: 'reason-1',
+        sessionId: SESSION_ID,
+        text: 'Hidden reasoning body',
+        start: 5,
+        end: 15,
+      },
+    ];
+    mockFetchMessages.mockResolvedValue({ messages: MESSAGES, items, events: [] });
+
+    await render(<ChatScreen />);
+
+    expect(await screen.findByText('Thought 10ms')).toBeTruthy();
+    expect(screen.queryByText('Hidden reasoning body')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('Thought 10ms'));
+
+    expect(screen.getByText('Hidden reasoning body')).toBeTruthy();
+    expect(screen.getByText('Hello host')).toBeTruthy();
+  });
+
+  it('renders an edit card with its path', async () => {
+    const items: TranscriptItem[] = [
+      { kind: 'text', id: 'message-user', sessionId: SESSION_ID, role: 'user', text: 'Hello host' },
+      {
+        kind: 'edit',
+        id: 'edit-1',
+        sessionId: SESSION_ID,
+        tool: 'edit',
+        status: 'completed',
+        path: '/host/project/file.ts',
+      },
+    ];
+    mockFetchMessages.mockResolvedValue({ messages: MESSAGES, items, events: [] });
+
+    await render(<ChatScreen />);
+
+    expect(await screen.findByText('Edit /host/project/file.ts')).toBeTruthy();
+    expect(screen.queryByText('completed')).toBeNull();
+  });
+
+  it('renders an edit diff hunk inside the card', async () => {
+    const items: TranscriptItem[] = [
+      {
+        kind: 'edit',
+        id: 'edit-1',
+        sessionId: SESSION_ID,
+        tool: 'edit',
+        status: 'completed',
+        path: '/host/project/file.ts',
+        diff: [
+          'Index: file.ts',
+          '===',
+          '--- a/file.ts',
+          '+++ b/file.ts',
+          '@@ -1 +1 @@',
+          '-removed visible line',
+          '+added visible line',
+        ].join('\n'),
+        additions: 1,
+        deletions: 1,
+      },
+    ];
+    mockFetchMessages.mockResolvedValue({ messages: MESSAGES, items, events: [] });
+
+    await render(<ChatScreen />);
+
+    expect(await screen.findByText('Edit /host/project/file.ts')).toBeTruthy();
+    expect(screen.getByText('+1 -1')).toBeTruthy();
+    expect(screen.getByText('+added visible line')).toBeTruthy();
+    expect(screen.getByText('-removed visible line')).toBeTruthy();
+    expect(screen.queryByText('--- a/file.ts')).toBeNull();
+    expect(screen.queryByText('ONLY_IN_OLD_STRING')).toBeNull();
+  });
+
+  it('starts a bash tool row collapsed and reveals the output in the same list', async () => {
+    const items: TranscriptItem[] = [
+      { kind: 'text', id: 'message-user', sessionId: SESSION_ID, role: 'user', text: 'Hello host' },
+      {
+        kind: 'tool',
+        id: 'bash-1',
+        sessionId: SESSION_ID,
+        tool: 'bash',
+        status: 'completed',
+        title: 'ls',
+        output: 'listed files',
+      },
+    ];
+    mockFetchMessages.mockResolvedValue({ messages: MESSAGES, items, events: [] });
+
+    await render(<ChatScreen />);
+
+    expect(await screen.findByText('ls')).toBeTruthy();
+    expect(screen.queryByText('listed files')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('ls'));
+
+    expect(screen.getByText('listed files')).toBeTruthy();
+    expect(screen.getByText('Hello host')).toBeTruthy();
+  });
+
+  it('opens the child transcript when a task press fetches that child session', async () => {
+    const items: TranscriptItem[] = [
+      { kind: 'text', id: 'message-user', sessionId: SESSION_ID, role: 'user', text: 'Hello host' },
+      {
+        kind: 'task',
+        id: 'task-1',
+        sessionId: SESSION_ID,
+        label: 'Inspect the child',
+        agent: 'forge',
+        status: 'completed',
+        childSessionId: 'child-ses-1',
+      },
+    ];
+    mockFetchMessages.mockImplementation(async (sessionID: string) => {
+      if (sessionID === 'child-ses-1') {
+        return {
+          messages: [
+            {
+              id: 'child-message',
+              sessionId: 'child-ses-1',
+              role: 'assistant',
+              text: 'Child session text',
+            },
+          ],
+          events: [],
+        };
+      }
+      return { messages: MESSAGES, items, events: [] };
+    });
+
+    await render(<ChatScreen />);
+
+    expect(await screen.findByText('Forge Task – Inspect the child')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Forge Task – Inspect the child'));
+
+    expect(await screen.findByText('Child session text')).toBeTruthy();
+    expect(mockFetchMessages).toHaveBeenCalledWith('child-ses-1');
+    expect(screen.queryByText('Hello host')).toBeNull();
+  });
+
+  it('opens a child session from a task row and restores the parent transcript on Back', async () => {
+    const textItem: TranscriptItem = {
+      kind: 'text',
+      id: 'message-user',
+      sessionId: SESSION_ID,
+      role: 'user',
+      text: 'Hello host',
+    };
+    const taskWithoutChild: TranscriptItem = {
+      kind: 'task',
+      id: 'task-1',
+      sessionId: SESSION_ID,
+      label: 'Fix hook mapping leak',
+      agent: 'forge',
+      status: 'completed',
+    };
+    const taskWithChild: TranscriptItem = {
+      ...taskWithoutChild,
+      childSessionId: 'child-ses-1',
+    };
+    let parentReads = 0;
+    mockFetchMessages.mockImplementation(async (sessionID: string) => {
+      if (sessionID === 'child-ses-1') {
+        return {
+          messages: [
+            {
+              id: 'child-message',
+              sessionId: 'child-ses-1',
+              role: 'assistant',
+              text: 'Child session text',
+            },
+          ],
+          events: [],
+        };
+      }
+      parentReads += 1;
+      return {
+        messages: MESSAGES,
+        items: [textItem, parentReads > 1 ? taskWithChild : taskWithoutChild],
+        events: [],
+      };
+    });
+
+    await render(<ChatScreen />);
+
+    expect(await screen.findByText('Hello host')).toBeTruthy();
+    expect(screen.getByText('Forge Task – Fix hook mapping leak')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Forge Task – Fix hook mapping leak'));
+
+    expect(await screen.findByText('Child session text')).toBeTruthy();
+    expect(screen.queryByText('Hello host')).toBeNull();
+
+    await fireEvent.press(screen.getByText('Back'));
+
+    expect(await screen.findByText('Hello host')).toBeTruthy();
+    expect(screen.queryByText('Child session text')).toBeNull();
   });
 });

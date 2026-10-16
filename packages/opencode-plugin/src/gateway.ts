@@ -21,7 +21,7 @@ import type {
   PairingCompleteResponse,
   PairingPayload,
 } from '@coderelay/protocol';
-import { AllowlistError, executeAllowedAction } from './allowlist';
+import { AllowlistError, executeAllowedAction, projectActivityPart } from './allowlist';
 import type { AllowedActionResult, OpenCodeClientLike } from './allowlist';
 import { createHostCrypto, fromBase64, toBase64 } from './crypto';
 import { DEFAULT_GATEWAY_PORT } from './endpoints';
@@ -244,10 +244,19 @@ function projectEvent(event: NormalizedEvent): NormalizedEvent {
     case 'message.part.updated': {
       const part = properties['part'];
       if (!isRecord(part)) return { name: event.name, properties: {} };
-      return {
-        name: event.name,
-        properties: { part: projectStringFields(part, ['type', 'messageID', 'sessionID', 'text']) },
-      };
+      if (part['type'] === 'text') {
+        return {
+          name: event.name,
+          properties: { part: projectStringFields(part, ['type', 'messageID', 'sessionID', 'text']) },
+        };
+      }
+      const projected = projectActivityPart(part);
+      if (projected === null) return { name: event.name, properties: {} };
+      const messageID = readString(part, 'messageID');
+      const sessionID = readString(part, 'sessionID');
+      if (messageID !== undefined) projected['messageID'] = messageID;
+      if (sessionID !== undefined) projected['sessionID'] = sessionID;
+      return { name: event.name, properties: { part: projected } };
     }
     default:
       return { name: event.name, properties: {} };
@@ -499,11 +508,11 @@ export class CodeRelayGateway {
     catalog: SessionCatalog,
     sessionId: string,
   ): Promise<string | GatewayError> {
-    const cached = catalog.lookup(sessionId);
+    const cached = catalog.lookup(sessionId) ?? catalog.lookupChildRootDirectory(sessionId);
     if (cached !== null) return cached;
     const refreshed = await catalog.list();
     if (refreshed instanceof SessionCatalogError) return new GatewayError(refreshed.message);
-    const routed = catalog.lookup(sessionId);
+    const routed = catalog.lookup(sessionId) ?? catalog.lookupChildRootDirectory(sessionId);
     if (routed === null) return new GatewayError('Unknown session');
     return routed;
   }

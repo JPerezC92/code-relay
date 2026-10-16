@@ -677,7 +677,8 @@ describe('CodeRelayGateway', () => {
     expect(messagesCalls).toBe(0);
   });
 
-  it('rejects a child session id that never enters the route map', async () => {
+  it('reads a child session through the parent root directory without routing the child', async () => {
+    const childDirectory = '/home/dev/alpha/child-private';
     const pairing = new PairingManager({ now: () => TEST_NOW });
     const client = createClient();
     installAlphaProject(client, [
@@ -691,15 +692,15 @@ describe('CodeRelayGateway', () => {
       {
         id: 'ses-child-1',
         projectID: 'proj-alpha',
-        directory: ALPHA_WORKTREE,
+        directory: childDirectory,
         time: { updated: 900 },
         parentID: 'ses-root-1',
       },
     ]);
     const catalog = new SessionCatalog(client);
-    let messagesCalls = 0;
-    client.session.messages = async () => {
-      messagesCalls += 1;
+    const messagesOptions: unknown[] = [];
+    client.session.messages = async (options) => {
+      messagesOptions.push(options);
       return { data: [], error: undefined, request: {}, response: {} };
     };
     const gateway = createGateway({ pairing, client, catalog });
@@ -713,11 +714,17 @@ describe('CodeRelayGateway', () => {
         }),
       ),
     );
-    expect(result.kind).toBe('error');
-    if (result.kind === 'error') expect(result.error.message).toBe('Unknown session');
+    expect(result.kind).toBe('action');
+    if (result.kind === 'action') expect(result.result.type).toBe('session.messages');
     expect(catalog.lookup('ses-child-1')).toBeNull();
+    expect(catalog.lookupChildRootDirectory('ses-child-1')).toBe(ALPHA_WORKTREE);
     expect(catalog.lookup('ses-root-1')).toBe(ALPHA_WORKTREE);
-    expect(messagesCalls).toBe(0);
+    expect(messagesOptions).toStrictEqual([
+      { path: { id: 'ses-child-1' }, query: { directory: ALPHA_WORKTREE } },
+    ]);
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(childDirectory);
+    expect(serialized).not.toContain(ALPHA_WORKTREE);
   });
 
   it('refreshes the route map once on a miss and executes with the host-derived directory', async () => {
@@ -1471,6 +1478,167 @@ describe('CodeRelayGateway event delivery', () => {
       'root',
       'metadata',
     ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
+  it('projects activity parts on message.part.updated and drops tool output and cwd', () => {
+    const gateway = createGateway();
+    expect(
+      gateway.handleEvent({
+        type: 'message.part.updated',
+        properties: {
+          part: {
+            type: 'reasoning',
+            id: 'reason-1',
+            text: 'Reasoning text',
+            time: { start: 5, end: 15 },
+            messageID: 'msg-1',
+            sessionID: 'ses-1',
+          },
+          cwd: '/secret/cwd',
+        },
+      }),
+    ).toStrictEqual({
+      name: 'message.part.updated',
+      properties: {
+        part: {
+          type: 'reasoning',
+          id: 'reason-1',
+          text: 'Reasoning text',
+          time: { start: 5, end: 15 },
+          messageID: 'msg-1',
+          sessionID: 'ses-1',
+        },
+      },
+    });
+    expect(
+      gateway.handleEvent({
+        type: 'message.part.updated',
+        properties: {
+          part: {
+            type: 'tool',
+            id: 'edit-1',
+            tool: 'edit',
+            messageID: 'msg-1',
+            sessionID: 'ses-1',
+            cwd: '/secret/cwd',
+            state: {
+              status: 'completed',
+              title: 'Update file',
+              input: { filePath: '/host/project/file.ts' },
+              output: 'LEAKED_TOOL_RESULT',
+            },
+          },
+        },
+      }),
+    ).toStrictEqual({
+      name: 'message.part.updated',
+      properties: {
+        part: {
+          type: 'tool',
+          id: 'edit-1',
+          tool: 'edit',
+          status: 'completed',
+          title: 'Update file',
+          path: '/host/project/file.ts',
+          messageID: 'msg-1',
+          sessionID: 'ses-1',
+        },
+      },
+    });
+    expect(
+      gateway.handleEvent({
+        type: 'message.part.updated',
+        properties: {
+          part: {
+            type: 'patch',
+            id: 'patch-1',
+            files: ['/host/project/patched.ts', { path: '/nope' }],
+            messageID: 'msg-1',
+            sessionID: 'ses-1',
+          },
+        },
+      }),
+    ).toStrictEqual({
+      name: 'message.part.updated',
+      properties: {
+        part: {
+          type: 'patch',
+          id: 'patch-1',
+          files: ['/host/project/patched.ts'],
+          messageID: 'msg-1',
+          sessionID: 'ses-1',
+        },
+      },
+    });
+    expect(
+      gateway.handleEvent({
+        type: 'message.part.updated',
+        properties: {
+          part: {
+            type: 'tool',
+            id: 'task-1',
+            tool: 'task',
+            messageID: 'msg-1',
+            sessionID: 'ses-1',
+            state: {
+              status: 'running',
+              input: {
+                agent: 'explore',
+                description: 'Find files',
+                prompt: 'LEAKED_PROMPT_BODY',
+              },
+              metadata: { sessionID: 'child-ses-1' },
+              output: 'LEAKED_TOOL_RESULT',
+            },
+          },
+        },
+      }),
+    ).toStrictEqual({
+      name: 'message.part.updated',
+      properties: {
+        part: {
+          type: 'tool',
+          id: 'task-1',
+          tool: 'task',
+          status: 'running',
+          agent: 'explore',
+          description: 'Find files',
+          childSessionId: 'child-ses-1',
+          messageID: 'msg-1',
+          sessionID: 'ses-1',
+        },
+      },
+    });
+    expect(
+      gateway.handleEvent({
+        type: 'message.part.updated',
+        properties: {
+          part: {
+            type: 'tool',
+            id: 'bash-1',
+            tool: 'bash',
+            state: { status: 'completed', output: 'LEAKED_TOOL_RESULT' },
+            cwd: '/secret/cwd',
+          },
+        },
+      }),
+    ).toStrictEqual({
+      name: 'message.part.updated',
+      properties: {
+        part: {
+          type: 'tool',
+          id: 'bash-1',
+          tool: 'bash',
+          status: 'completed',
+          title: 'bash',
+          output: 'LEAKED_TOOL_RESULT',
+        },
+      },
+    });
+    const serialized = JSON.stringify(gateway.drainEvents());
+    for (const forbidden of ['LEAKED_PROMPT_BODY', '/secret/cwd', 'cwd']) {
       expect(serialized).not.toContain(forbidden);
     }
   });
