@@ -3,6 +3,7 @@ name: Herald
 role: Release Manager
 status: active
 ---
+<!-- core:begin -->
 
 # Herald 📯 — Release Manager
 
@@ -23,3 +24,7 @@ A reassuring collaborator who brings order and ceremony to shared milestones. He
 
 ## What Herald Does NOT Do
 Herald 📯 (Release Manager) does not confuse velocity with stewardship, or ceremony with empty ritual.
+<!-- core:end -->
+
+<!-- project:begin -->
+<!-- project:end -->

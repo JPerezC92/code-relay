@@ -1,120 +1,195 @@
 {
     "$schema": "https://opencode.ai/config.json",
-    "autoupdate": true,
-    "agent": {
-        "plan": {
-            "model": "deepseek/deepseek-v4-flash",
-            "color": "warning"
-        },
-        "build": {
-            "model": "zai-coding-plan/glm-4.7",
-            "color": "secondary"
-        }
-    },
+    "update": "auto",
     // Project instructions (optional — point at your own docs):
     // "instructions": [
     //     "./knowledge/cipher-hard-rules.md",
     //     "./knowledge/operational-gates.md"
     // ],
-    "permission": {
-        "read": {
-            "*": "allow",
-            "*.env": "deny",
-            "*.env.*": "deny"
-        },
-        "glob": "allow",
-        "grep": "allow",
-        "webfetch": "allow",
-        "websearch": "allow",
-        "task": "allow",
-        "skill": "allow",
-        "lsp": "allow",
-        "question": "allow",
-        "edit": "allow",
-        "external_directory": {
-            "*": "allow"
-        },
-        "bash": {
-            "*": "allow",
-            "rm -rf /*": "deny",
-            "rm -rf *": "ask",
-            "rm *": "ask",
-            "mv *": "ask",
-            "cp *": "ask",
-            "chmod *": "ask",
-            "chown *": "ask",
-            "sudo *": "deny",
-            "git push --force *": "deny",
-            "git push *": "ask",
-            "git reset --hard *": "deny",
-            "git clean -fd *": "deny",
-            "git branch -D *": "ask",
-            "gh pr merge *": "deny",
-            "gh repo delete *": "deny",
-            "> /*": "deny",
-            // Stash safety gate (plan-enforce) — model agents may
-            // `git stash push`/`save` (park work) and `git stash apply`
-            // (recover, non-destructive — the entry survives as a durable
-            // backup). `pop`/`drop`/`clear`/`update-ref` stay denied below;
-            // stash erasure is user-only, run manually in the user's terminal.
-            // Read-only inventory allows follow.
-            //
-            // NOTE: The OpenCode TUI must be RESTARTED for any permission change
-            // to take effect. Active sessions do NOT reload the `bash` block at
-            // runtime.
-            "git stash *": "deny",
-            "git stash push": "allow",
-            "git stash push *": "allow",
-            "git stash save": "allow",
-            "git stash save *": "allow",
-            "git stash apply": "allow",
-            "git stash apply *": "allow",
-            "git update-ref *": "deny",
-            "git stash": "deny",
-            "git reflog *": "deny",
-            "git gc": "deny",
-            "git gc *": "deny",
-            "git prune": "deny",
-            "git prune *": "deny",
-            "git repack": "deny",
-            "git repack *": "deny",
-            "git symbolic-ref refs/stash *": "deny",
-            "git stash list": "allow",
-            "git stash show -u": "allow",
-            "git stash show -u *": "allow",
-            "mv plans/*-*": "allow"
-        }
-    },
     "compaction": {
-        "auto": true,
-        "prune": true
+        "auto": true
     },
     "mcp": {
-        "memories": {
-            "type": "local",
-            "command": ["npx", "-y", "@memories.sh/cli", "serve"]
-        },
-        "context7": {
-            "type": "remote",
-            "url": "https://mcp.context7.com/mcp",
-            "headers": {
-                "CONTEXT7_API_KEY": "{file:./.secrets/context7-api-key}"
+        "servers": {
+            "memories": {
+                "type": "local",
+                "command": ["npx", "-y", "@memories.sh/cli", "serve"]
             },
-            "enabled": true
+            "context7": {
+                "type": "remote",
+                "url": "https://mcp.context7.com/mcp",
+                "headers": {
+                    "CONTEXT7_API_KEY": "{file:./.secrets/context7-api-key}"
+                }
+            }
+        },
+        // MCP servers (per-project — add your own here on copy). Example (generic):
+        // "chrome-devtools": {
+        //     "type": "local",
+        //     "command": ["npx", "-y", "chrome-devtools-mcp@latest"]
+        // },
+        // "context7": {
+        //     "type": "remote",
+        //     "url": "https://mcp.context7.com/mcp",
+        //     "headers": { "CONTEXT7_API_KEY": "YOUR_API_KEY" },
+        //     "enabled": true
+        // }
+    },
+    "plugins": [
+        "file:///home/dexm76/projects-personal/CodeRelay/packages/opencode-plugin/src/index.ts"
+    ],
+  "agents": {
+        "plan": {
+            "model": "deepseek/deepseek-flash",
+            "color": "#56b6c2",
+            "permissions": [
+                { "action": "question", "resource": "*", "effect": "allow" },
+                { "action": "edit", "resource": "*", "effect": "deny" }
+            ]
+        },
+        "build": {
+            "model": "deepseek/deepseek-flash",
+            "color": "#e5a00d",
+            "permissions": [
+                { "action": "question", "resource": "*", "effect": "allow" }
+            ]
+        },
+        "crucible": {
+            "permissions": [
+                { "action": "shell", "resource": "*", "effect": "deny" },
+                { "action": "shell", "resource": "pnpm install", "effect": "allow" },
+                { "action": "shell", "resource": "uv run --frozen --group dev pytest -q", "effect": "allow" },
+                // Read-only discovery so the test architect can inspect the tree
+                // with `rg`/`ls`. Use Glob/Grep for filesystem discovery. Editing,
+                // network, and interpreter access stay denied. TUI restart required.
+                { "action": "shell", "resource": "rg *", "effect": "allow" },
+                { "action": "shell", "resource": "rg *--pre*", "effect": "deny" },
+                { "action": "shell", "resource": "ls *", "effect": "allow" },
+                { "action": "shell", "resource": "wc *", "effect": "allow" },
+                { "action": "shell", "resource": "git log *", "effect": "allow" },
+                { "action": "shell", "resource": "git show *", "effect": "allow" },
+                { "action": "shell", "resource": "git diff *", "effect": "allow" }
+            ]
         }
     },
-"plugin": [
-    "file:///home/dexm76/projects-personal/CodeRelay/packages/opencode-plugin/src/index.ts"
-]
-    // MCP servers (per-project — add your own here on copy). Example (generic):
-    // "chrome-devtools": {
-    //     "type": "local",
-    //     "command": ["npx", "-y", "chrome-devtools-mcp@latest"]
-    // },
-    // "context7": {
-    //     "type": "remote",
-    //     "url": "https://mcp.context7.com/mcp",
-    //     "headers": { "CONTEXT7_API_KEY": "YOUR_API_KEY" },
-    //     "enabled": true
-    // }
+  "permissions": [
+        { "action": "read", "resource": "*", "effect": "allow" },
+        { "action": "read", "resource": "*.env", "effect": "deny" },
+        { "action": "read", "resource": "*.env.*", "effect": "deny" },
+        { "action": "glob", "resource": "*", "effect": "allow" },
+        { "action": "grep", "resource": "*", "effect": "allow" },
+        { "action": "webfetch", "resource": "*", "effect": "allow" },
+        { "action": "websearch", "resource": "*", "effect": "allow" },
+        { "action": "subagent", "resource": "*", "effect": "allow" },
+        { "action": "skill", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "external_directory", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "rm *", "effect": "ask" },
+        { "action": "shell", "resource": "rm -rf *", "effect": "ask" },
+        { "action": "shell", "resource": "rm -rf /*", "effect": "deny" },
+        { "action": "shell", "resource": "rm -rf ~*", "effect": "deny" },
+        { "action": "shell", "resource": "rm -r /*", "effect": "deny" },
+        { "action": "shell", "resource": "rm -fr /*", "effect": "deny" },
+        { "action": "shell", "resource": "rm -f -r /*", "effect": "deny" },
+        { "action": "shell", "resource": "rm -r -f /*", "effect": "deny" },
+        { "action": "shell", "resource": "rm -r ~*", "effect": "deny" },
+        { "action": "shell", "resource": "rm -fr ~*", "effect": "deny" },
+        { "action": "shell", "resource": "rm -f -r ~*", "effect": "deny" },
+        { "action": "shell", "resource": "rm -r -f ~*", "effect": "deny" },
+        { "action": "shell", "resource": "mv *", "effect": "ask" },
+        { "action": "shell", "resource": "cp *", "effect": "ask" },
+        { "action": "shell", "resource": "chmod *", "effect": "ask" },
+        { "action": "shell", "resource": "chown *", "effect": "ask" },
+        { "action": "shell", "resource": "sudo *", "effect": "deny" },
+        { "action": "shell", "resource": "git push *", "effect": "ask" },
+        { "action": "shell", "resource": "git push --force *", "effect": "deny" },
+        { "action": "shell", "resource": "git push --force", "effect": "deny" },
+        { "action": "shell", "resource": "git push -f *", "effect": "deny" },
+        { "action": "shell", "resource": "git push -f", "effect": "deny" },
+        { "action": "shell", "resource": "git reset --hard *", "effect": "deny" },
+        { "action": "shell", "resource": "git clean -fd *", "effect": "deny" },
+        { "action": "shell", "resource": "git branch -D *", "effect": "ask" },
+        { "action": "shell", "resource": "gh pr merge *", "effect": "deny" },
+        { "action": "shell", "resource": "gh repo delete *", "effect": "deny" },
+        { "action": "shell", "resource": "dd *of=/dev/*", "effect": "deny" },
+        { "action": "shell", "resource": "mkfs*", "effect": "deny" },
+        { "action": "shell", "resource": "chmod -R * /*", "effect": "deny" },
+        { "action": "shell", "resource": "chown -R * /*", "effect": "deny" },
+        { "action": "shell", "resource": "shutdown*", "effect": "deny" },
+        { "action": "shell", "resource": "reboot*", "effect": "deny" },
+        // Read-only tools. Broad allow first, then the narrow deny that
+        // disables its mutating mode under last-match-wins.
+        { "action": "shell", "resource": "jq *", "effect": "allow" },
+        { "action": "shell", "resource": "rg *", "effect": "allow" },
+        { "action": "shell", "resource": "rg *--pre*", "effect": "deny" },
+        { "action": "shell", "resource": "ast-grep *", "effect": "allow" },
+        { "action": "shell", "resource": "ast-grep *--rewrite*", "effect": "deny" },
+        { "action": "shell", "resource": "ast-grep *--update-all*", "effect": "deny" },
+        { "action": "shell", "resource": "ast-grep *-U*", "effect": "deny" },
+        // `sg` is ast-grep's deprecated alias and collides with util-linux
+        // `sg` (switch-group); deny the name and use `ast-grep` only.
+        { "action": "shell", "resource": "sg *", "effect": "deny" },
+        // Project virtual environment only: uv run is allowed, uvx is not.
+        { "action": "shell", "resource": "uv run *", "effect": "allow" },
+        { "action": "shell", "resource": "uv run *ruff*--fix*", "effect": "deny" },
+        { "action": "shell", "resource": "ruff *--fix*", "effect": "deny" },
+        // Mutating package/format operations are denied regardless of wrapper.
+        { "action": "shell", "resource": "*pip install*", "effect": "deny" },
+        { "action": "shell", "resource": "*pip3 install*", "effect": "deny" },
+        { "action": "shell", "resource": "*python -m pip *", "effect": "deny" },
+        { "action": "shell", "resource": "*ruff format*", "effect": "deny" },
+        { "action": "shell", "resource": "*ruff format --check*", "effect": "allow" },
+        { "action": "shell", "resource": "uvx *", "effect": "deny" },
+        { "action": "shell", "resource": "uv tool run *", "effect": "deny" },
+        // Stash safety gate (plan-enforce) — model agents may
+        // `git stash push`/`save` (park work) and `git stash apply`
+        // (recover, non-destructive — the entry survives as a durable
+        // backup). `pop`/`drop`/`clear`/`update-ref` stay denied below;
+        // stash erasure is user-only, run manually in the user's terminal.
+        // Read-only inventory allows follow.
+        //
+        // NOTE: The OpenCode TUI must be RESTARTED for any permission change
+        // to take effect. Active sessions do NOT reload the shell rules at
+        // runtime.
+        { "action": "shell", "resource": "git stash *", "effect": "deny" },
+        { "action": "shell", "resource": "git stash push", "effect": "allow" },
+        { "action": "shell", "resource": "git stash push *", "effect": "allow" },
+        { "action": "shell", "resource": "git stash save", "effect": "allow" },
+        { "action": "shell", "resource": "git stash save *", "effect": "allow" },
+        { "action": "shell", "resource": "git stash apply", "effect": "allow" },
+        { "action": "shell", "resource": "git stash apply *", "effect": "allow" },
+        { "action": "shell", "resource": "git update-ref *", "effect": "deny" },
+        { "action": "shell", "resource": "git stash", "effect": "deny" },
+        { "action": "shell", "resource": "git reflog *", "effect": "deny" },
+        { "action": "shell", "resource": "git gc", "effect": "deny" },
+        { "action": "shell", "resource": "git gc *", "effect": "deny" },
+        { "action": "shell", "resource": "git prune", "effect": "deny" },
+        { "action": "shell", "resource": "git prune *", "effect": "deny" },
+        { "action": "shell", "resource": "git repack", "effect": "deny" },
+        { "action": "shell", "resource": "git repack *", "effect": "deny" },
+        { "action": "shell", "resource": "git symbolic-ref refs/stash *", "effect": "deny" },
+        { "action": "shell", "resource": "git stash list", "effect": "allow" },
+        { "action": "shell", "resource": "git stash show -u", "effect": "allow" },
+        { "action": "shell", "resource": "git stash show -u *", "effect": "allow" },
+        { "action": "shell", "resource": "mv plans/*-*", "effect": "allow" },
+        // Redirect denies LAST so no later allow can shadow them; narrowed to
+        // catastrophic absolute targets so /tmp and /dev/null stay usable.
+        // (A fork bomb is not expressible as a glob because the shell tool
+        // emits only the inner command nodes; accepted as a documented gap.)
+        { "action": "shell", "resource": "* > /etc/*", "effect": "deny" },
+        { "action": "shell", "resource": "* >> /etc/*", "effect": "deny" },
+        { "action": "shell", "resource": "* 2> /etc/*", "effect": "deny" },
+        { "action": "shell", "resource": "* 2>> /etc/*", "effect": "deny" },
+        { "action": "shell", "resource": "* &> /etc/*", "effect": "deny" },
+        { "action": "shell", "resource": "* > /boot/*", "effect": "deny" },
+        { "action": "shell", "resource": "* > /usr/*", "effect": "deny" },
+        { "action": "shell", "resource": "* > /root/*", "effect": "deny" },
+        { "action": "shell", "resource": "* > /home/*", "effect": "deny" },
+        { "action": "shell", "resource": "* > /var/*", "effect": "deny" },
+        { "action": "shell", "resource": "* > /opt/*", "effect": "deny" },
+        { "action": "shell", "resource": "* > /dev/sd*", "effect": "deny" }
+        // NOTE: the OpenCode TUI must be RESTARTED for these changes to take effect.
+    ]
 }

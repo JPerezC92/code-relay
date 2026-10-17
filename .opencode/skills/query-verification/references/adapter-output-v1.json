@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "verifier_id": "incident.example-amount.v1",
+  "source_digest": "sha256:24e36759d15042aa53bc3d65567c28049b5a9df8083d69caaadf17848779ffce",
+  "result_set": "verification",
+  "rows": [
+    {
+      "verification_verdict": "verified",
+      "order_reference": "EXAMPLE-ORDER-0001",
+      "order_count": 1,
+      "amount_difference": "12.50"
+    }
+  ]
+}

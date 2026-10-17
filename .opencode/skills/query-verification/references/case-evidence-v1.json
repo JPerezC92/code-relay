@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "verifier_id": "incident.example-amount.v1",
+  "verdict": "verified",
+  "result_set": "verification",
+  "source_digest": "sha256:24e36759d15042aa53bc3d65567c28049b5a9df8083d69caaadf17848779ffce",
+  "definition_digest": "sha256:eb59d654c3a49fe9564b5bf552a34f8ff9b6bf4320c0d18848d27c6e9b55b400",
+  "evidence": {
+    "verification_verdict": "verified",
+    "order_reference": "[REDACTED]",
+    "order_count": 1,
+    "amount_difference": "12.50"
+  },
+  "evidence_digest": "sha256:f6c8ca9e4f5c86cb0ab3633f4009098a73a60281d079ba9c6d1629f29dad1021"
+}
