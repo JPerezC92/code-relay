@@ -1,0 +1,40 @@
+# Static reference shape: verifier sidecar v1 (incident-only pilot).
+# This file is a contract illustration. It contains no SQL, credentials, customer data,
+# or executable command. The source is a normalized relative POSIX path beneath the
+# invocation-time query root, and this sidecar sits adjacent to that source.
+schema_version: 1
+id: incident.example-amount.v1
+team: incident
+source: checks/example-amount.sql
+symptoms:
+  - S-XX-EXAMPLE-AMOUNT
+purpose: Confirm whether an example order amount differs from its persisted amount.
+parameters:
+  - name: campaign_id
+    type: integer
+    required: true
+  - name: consultant_identifier
+    type: string
+    required: true
+    redaction: internal_identifier
+safety:
+  operation: read_only
+  max_rows: 1
+result_set:
+  name: verification
+  columns:
+    - name: verification_verdict
+      type: string
+    - name: order_reference
+      type: string
+    - name: order_count
+      type: integer
+    - name: amount_difference
+      type: decimal
+evidence_columns:
+  - verification_verdict
+  - order_reference
+  - order_count
+  - amount_difference
+redact_columns:
+  - order_reference

@@ -1,17 +1,21 @@
 ---
 name: git-pr
-description: Draft a pull request title and body by analyzing branch commits and the diff versus origin/main, writing output to pr-draft.md. Use when the user wants to open a PR, create a pull request, draft a PR description, or says "I'm done with this branch" / "ready to merge" / "submit my changes" — even if they don't say "pull request" explicitly.
+description: Draft a pull request title and body by analyzing branch commits and the diff versus the project's base branch ($BASE), writing output to `pr-draft.md`; if that path is not ignored, preview and request approval before adding it to `.gitignore`. Use when the user wants to open a PR, create a pull request, draft a PR description, or says "I'm done with this branch" / "ready to merge" / "submit my changes".
 license: MIT
 compatibility: opencode
 metadata:
   author: Philip Perez Castro
-  version: 1.3.1
+  version: 1.6.0
   domain: git
 ---
 
+## Base branch
+
+`$BASE` denotes the project's base branch ref; substitute the project's actual base ref where `$BASE` appears. Other base refs may apply when the project's upstream differs (for example `origin/develop`).
+
 ## What I do
 
-Analyze the current branch's divergence from `origin/main` and write a PR title + body to `pr-draft.md` at the repository root. The file is the single source of truth for the eventual PR body; do not create a second PR-description artifact.
+Analyze the current branch's divergence from the project's base branch (`$BASE`) and write a PR title + body to `pr-draft.md` at the repository root. The file is the single source of truth for the eventual PR body; do not create a second PR-description artifact. If the `.gitignore` entry is missing, ask before making that separate change.
 
 ## When to use me
 
@@ -22,7 +26,7 @@ Analyze the current branch's divergence from `origin/main` and write a PR title 
 - After `/git-commit` produces a commit, the natural next step is `/git-pr`
 - For a convention-compliant branch, `/git-branch-name` is the start of the branch-to-commit-to-PR naming chain
 
-Do NOT use this skill to run `gh pr create` or any git command that mutates state — it only writes the draft file.
+Do NOT use this skill to run `gh pr create` or any git command that mutates state. Its default output is `pr-draft.md`; it may append the exact ignore entry to `.gitignore` only after explicit approval.
 
 **Pipeline binding:** if this project has the agent roster installed (`.opencode/agents/herald.md` exists), the draft feeds Herald 📯 (Release Manager), who creates the PR; PR creation is not completion — the PR is done only after Inquisitor 🔎 (PR Reviewer) reviews it at the immutable head.
 
@@ -34,19 +38,19 @@ None. The skill reads the current branch state directly from git.
 
 1. Run these in parallel:
     - `git status`
-    - `git log --oneline origin/main...HEAD`
-    - `git diff origin/main...HEAD --stat`
+    - `git log --oneline "$BASE"...HEAD`
+    - `git diff "$BASE"...HEAD --stat`
     - `git log --oneline -5` (recent style reference)
     - `git branch --show-current`
-2. If the diff stat is small (under 20 files), run `git diff origin/main...HEAD` for the full diff. Otherwise, read the most relevant changed files selectively — reading the full diff on a large changeset wastes context; sample the highest-signal files instead. `git diff --cached --check` is a whitespace diagnostic only and is never PR scope evidence.
+2. If the diff stat is small (under 20 files), run `git diff "$BASE"...HEAD` for the full diff. Otherwise, read the most relevant changed files selectively — reading the full diff on a large changeset wastes context; sample the highest-signal files instead. `git diff --cached --check` is a whitespace diagnostic only and is never PR scope evidence.
 3. Check for a plan or ticket file that explains the motivation — the PR Summary should explain the *why*, which usually lives in the plan/ticket Context, not the diff:
    - Look for `plans/*.md` and `plans/*/plan.md` with `Status: active` or `Status: completed`
    - Look for ticket folders matching recent commit refs
    - If found, read the **Context** section for the why
 4. Determine the PR title and body from the diff following the format below.
 5. If the current branch matches `type/scope/description` with a supported type, compare its `type/scope` with the diff-derived PR title. When they differ, keep the diff-derived title and print an explicit warning that shows both values; a branch is evidence of intent, not authority over the diff.
-6. Ensure `pr-draft.md` is in `.gitignore` — if not, add it immediately before writing.
-7. Write the output to `pr-draft.md` at the repository root.
+6. Read `.gitignore`. If `pr-draft.md` is not ignored, preview the exact `.gitignore` addition and ask the user to approve that second file write. If declined, do not write either file and report the blocker.
+7. After any needed approval, append `pr-draft.md` to `.gitignore` only if missing, then write the output file.
 8. If `.opencode/agents/herald.md` exists in the project, do NOT print a direct `gh pr create` command — report that `pr-draft.md` is ready for Herald 📯 (Release Manager), naming Inquisitor 🔎 (PR Reviewer) review at the immutable head as the completion condition. Otherwise, print the ready-to-run `gh pr create` command with the draft content inlined.
 
 ## Format
@@ -91,7 +95,7 @@ type(scope): concise summary under 70 characters
 
 After the PR exists, retain the same PR body as the sole mutable description surface; do not create or use GitHub comments, reviews, or a second evidence document. Before any test-plan checkbox changes from `- [ ]` to `- [x]`:
 
-1. Obtain the PR number and immutable PR head SHA with `gh pr view <number> --json number,headRefOid`; then inspect the changed-file list and patch with `git diff origin/main...<head-sha>`. A local `HEAD`, branch name, or `git diff --cached --check` alone is insufficient.
+1. Obtain the PR number and immutable PR head SHA with `gh pr view <number> --json number,headRefOid`; then inspect the changed-file list and patch with `git diff "$BASE"...<head-sha>`. A local `HEAD`, branch name, or `git diff --cached --check` alone is insufficient.
 2. Execute the specific test against that commit and record the evidence in a `## Test evidence` section in the PR body using this exact shape:
 
 ````markdown
@@ -99,15 +103,20 @@ After the PR exists, retain the same PR body as the sole mutable description sur
 - Test-plan item: `<exact checkbox text>`
   - PR: `#<number>`
   - Commit under test / immutable head SHA: `<head-sha>`
-  - Base: `origin/main`
-  - Scope command: `git diff origin/main...<head-sha>`
+  - Base: `$BASE`
+  - Scope command: `git diff "$BASE"...<head-sha>`
   - Input: `<literal executed input>`
+  - Command (only when a command was actually executed): `<literal executed command>`
   - Observed output: `<literal observed output>`
   - Executor: `<person or agent>`
 ````
 
-3. Re-read the persisted PR body with `gh pr view <number> --json body` and verify the PR number, immutable head SHA, exact scope command, literal input, observed output, executor, and matching evidence row before ticking the corresponding checkbox. Missing or partial evidence leaves the item unchecked.
-4. **Execution-ownership handoff.** When Cipher 🔓 (Lead Orchestrator) or another execution owner runs a test-plan item but does not own PR-body mutation, that owner must not report the PR complete. It must immediately dispatch Herald 📯 (Release Manager) to persist the complete evidence row, re-read the live PR body, and tick the exact matching checkbox. The item stays `- [ ]`, and no PR-complete report is made, until that handoff completes.
+**Verdict-only observed output.** `Observed output` is the human-readable verdict only — for pytest, the `N passed in Xs` line (and the exit code where relevant). Do not paste progress bars, per-test dots, stack traces, or raw dumps unless the user explicitly asks. A raw dump is not clearer evidence; the verdict line is the durable result.
+
+**Manual actions.** An evidence row may record a genuinely performed manual action — treat it like any other row: literal action/input, literal observed result, and the actual executor. Include the executed command only when a command was actually run; never invent one for a manual check, and never let a bare tick instruction or a `manual`/`optional` label stand in for a performed execution.
+
+3. **Atomic evidence-and-tick join.** Validate the complete evidence for the item first — PR number, immutable head SHA, exact scope command, literal input, observed output, executor, and the matching evidence row. Only then persist the `## Test evidence` row(s) and the matching checkbox tick(s) in ONE `--body-file` body write: a row is never persisted in one write and its checkbox ticked in a separate write. After that single write, live-reread the unchanged head and body with `gh pr view <number> --json number,headRefOid,body`; a changed head, a divergent body, or a failed reread blocks acceptance. Missing or partial evidence leaves the item unchecked.
+4. **Execution-ownership handoff.** When an execution owner runs a test-plan item but does not own PR-body mutation, that owner must not report the PR complete; the complete `## Test evidence` row and the matching tick are recorded by the single evidence writer at the review join (the designated Inquisitor 🔎 (PR Reviewer) instance under the project's PR-boundary contract) — no second body writer exists; the item stays `- [ ]`, and no PR-complete report is made, until that writer has persisted the row and tick and re-read the live body.
 
 ### Breaking changes
 
@@ -155,11 +164,11 @@ Title: <title here>
 - **Do NOT tick test plan checkboxes** in the draft. Ticking happens later, in the PR body, after each item has been executed with live evidence.
 - **Do NOT force a PR title to match its branch.** A matching branch is a consistency check; the diff-derived title wins on mismatch and the mismatch must be reported.
 - **Do NOT use prose test items** ("Verify the X works"). Use `- [ ] <actionable item>` form. Herald 📯 (Release Manager) converts prose → checkboxes only if forced; the skill must produce checkboxes from the start.
-- **Do NOT claim unexecuted evidence** in the draft or PR body. A checkbox remains unchecked until its complete post-PR evidence row is persisted and re-read.
-- **Do NOT use `git diff --cached --check` as scope evidence.** Use `git diff origin/main...HEAD` before PR creation and `git diff origin/main...<head-sha>` after the immutable PR head is known.
+- **Do NOT claim unexecuted evidence** in the draft or PR body. Before the join, missing or unvalidated evidence leaves its checkbox unchecked. At the join, write the validated evidence row and matching tick together once; accept the tick only after the live unchanged-head/body reread succeeds. A failed reread blocks acceptance, not a separate persist-before-tick write.
+- **Do NOT use `git diff --cached --check` as scope evidence.** Use `git diff "$BASE"...HEAD` before PR creation and `git diff "$BASE"...<head-sha>` after the immutable PR head is known.
 - **Do NOT create, post, edit, identify, or delete GitHub comments or reviews.** Test evidence belongs only in the PR body.
-- **If on main/master with no diverging commits** — inform the user, no draft to write.
-- **If the branch has no commits ahead of main** — check for uncommitted changes and suggest running `/git-commit` first.
+- **If on the base branch with no diverging commits** — inform the user, no draft to write.
+- **If the branch has no commits ahead of `$BASE`** — check for uncommitted changes and suggest running `/git-commit` first.
 - **After writing the file**: if the project has NO agent roster (no `.opencode/agents/herald.md`), print the full ready-to-run command:
   ```
   gh pr create --title "<title>" --body "$(cat pr-draft.md | tail -n +4)"
@@ -168,17 +177,17 @@ Title: <title here>
 
 ## Troubleshooting
 
-**`fatal: ambiguous argument 'origin/main...HEAD'`**:
-- Cause: branch is `master`, or the upstream tracking branch has a different name (e.g., `origin/develop`).
-- Fix: run `git branch -vv` to confirm the current upstream, then re-run the diff against the correct remote base (e.g., `git diff origin/develop...HEAD`).
+**`fatal: ambiguous argument '$BASE...HEAD'`**:
+- Cause: the project's base branch has a different name than the configured `$BASE` (e.g., the default branch is named differently, or `master` is used).
+- Fix: run `git branch -vv` to confirm the current upstream, then re-run the diff against the correct remote base ref and set `$BASE` accordingly.
 
-**No commits ahead of main**:
-- Cause: branch is at the same commit as `main` — nothing to PR.
+**No commits ahead of `$BASE`**:
+- Cause: branch is at the same commit as `$BASE` — nothing to PR.
 - Fix: check `git status` for uncommitted changes; if any exist, run `/git-commit` first. If the branch is clean, inform the user that there is nothing to PR.
 
 **`.gitignore` does not list `pr-draft.md`**:
 - Cause: the file would otherwise be tracked and pollute the diff.
-- Fix: add `pr-draft.md` to `.gitignore` BEFORE writing the draft (step 6). Verify with `git check-ignore -v pr-draft.md`.
+- Fix: preview the exact `.gitignore` line and get explicit approval before adding it; if declined, do not write `pr-draft.md`. Verify approved additions with `git check-ignore -v pr-draft.md`.
 
 **PR body test plan was prose instead of `- [ ]` checkboxes**:
 - Cause: the draft used bullet sentences, not checkboxes.
@@ -186,11 +195,11 @@ Title: <title here>
 
 **A checkbox was ticked without complete evidence**:
 - Cause: the PR body lacks the immutable head SHA, exact scope command, literal input, observed output, executor, or a persisted re-read.
-- Fix: return the item to `- [ ]`, add the complete `## Test evidence` row for the current PR head, re-read the PR body, then tick only the matching item.
+- Fix: return the item to `- [ ]`, then validate the complete `## Test evidence` row for the current PR head and persist that row together with its matching tick in one body write, and live-reread the unchanged head/body before accepting.
 
 **Tests executed but test-plan boxes left unchecked**:
 - Cause: an execution owner ran the item but the PR-body persistence step was skipped, so no `## Test evidence` row was written and the matching checkbox was never ticked.
-- Fix: dispatch Herald 📯 (Release Manager) to persist the complete head-bound `## Test evidence` row, re-read the live PR body, then tick only the matching item.
+- Fix: route the complete head-bound `## Test evidence` row to the single evidence writer at the review join to persist the row and its matching tick in one body write, then live-reread the unchanged head/body before accepting.
 
 **`git ls-tree -- '*.py'` (pathspec form) silently returns 0 results**:
 - Cause: `git ls-tree` with a pathspec form returns nothing even when matching files are tracked — it has produced false "no Python files" verdicts in PR reviews.
@@ -198,4 +207,4 @@ Title: <title here>
 
 **Changeset scope confused with repo-wide tree scope**:
 - Cause: `git ls-tree -r <sha> --name-only | grep '\.py$'` lists every tracked file in the whole tree at that SHA, not the PR's changeset — a Markdown-only PR still lists tracked `.py` files this way.
-- Fix: for changeset language scope, use the diff pipe-grep: `git diff --name-only origin/main...<head-sha> | grep '\.py$'` — empty output means the changeset has no `.py` files.
+- Fix: for changeset language scope, use the diff pipe-grep: `git diff --name-only "$BASE"...<head-sha> | grep '\.py$'` — empty output means the changeset has no `.py` files.

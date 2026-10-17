@@ -1,0 +1,31 @@
+# Static valid fixture: incident-owned verifier sidecar (v1, incident-only pilot).
+# Adjacent to incident-check.sql beneath the invocation-time query root.
+schema_version: 1
+id: incident.incident-check.v1
+team: incident
+source: incident-check.sql
+symptoms:
+  - S-XX-INCIDENT-CHECK
+purpose: Confirm whether the declared incident symptom is present for one case.
+parameters:
+  - name: case_id
+    type: string
+    required: true
+safety:
+  operation: read_only
+  max_rows: 1
+result_set:
+  name: verification
+  columns:
+    - name: verification_verdict
+      type: string
+    - name: case_reference
+      type: string
+    - name: matched_rows
+      type: integer
+evidence_columns:
+  - verification_verdict
+  - case_reference
+  - matched_rows
+redact_columns:
+  - case_reference

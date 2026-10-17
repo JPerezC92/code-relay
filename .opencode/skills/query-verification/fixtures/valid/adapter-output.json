@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "verifier_id": "incident.incident-check.v1",
+  "source_digest": "sha256:1e098701a3d6952bf6bae5a05d899527051e40f384e344e607981f4ffb7a218a",
+  "result_set": "verification",
+  "rows": [
+    {
+      "verification_verdict": "verified",
+      "case_reference": "CASE-EXAMPLE-0001",
+      "matched_rows": 1
+    }
+  ]
+}
