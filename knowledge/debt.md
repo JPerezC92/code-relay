@@ -1,3 +1,4 @@
+<!-- core:begin -->
 # Accepted Debt Register
 
 Records of deferred technical or process debt that are **non-blocking** for release.
@@ -18,8 +19,14 @@ Each entry MUST include:
 - An accepted debt is nonblocking only when its record here carries direct evidence, resolution criteria, and an explicit deferral decision (see Herald 📯 (Release Manager) spec).
 - Disclose the ID and unresolved criteria in any operation report that touches it.
 - Clear and retire a debt in the same PR: the PR that clears a debt deletes its entry from this register, and its body and commit carry the Resolution evidence (criteria met, validation and audit results). Git history is the permanent record for retired entries; this register holds open debts only. Never open a dedicated PR whose sole purpose is pruning cleared entries — each debt is retired by exactly one PR: its clearing PR.
+- **ID allocation.** Each register owns an independent monotonic ID sequence; IDs are never shared across projects or registers. Allocate the next ID as the current high-water plus one, read from this register's own recorded next-ID value — never recomputed from the currently open entries, because retiring an entry erases the maximum and would reuse an issued ID. Gaps are valid history: never refill one, and never reuse a retired ID. If the register has no recorded next-ID, bootstrap it once from the highest identifier ever present in this register's verified history; when that history is unavailable, truncated, or renamed, stop and report the gap instead of guessing a starting value.
 
 ## Register
+<!-- core:end -->
+
+<!-- project:begin -->
+
+**Next ID:** DEBT-010 (ID allocation rule: bootstrap once from verified history — high-water `DEBT-008` + 1 = `DEBT-009`, issued and retired 2026-10-17 within this same changeset; retired IDs are never reused and gaps are valid history; history checked 2026-10-17, 001–008 contiguous, no prior retirements)
 
 ### DEBT-001 — Rate limiters are process-global, not per-source
 
@@ -84,3 +91,6 @@ Each entry MUST include:
 - **Direct evidence:** Crucible 🔥 (Test Architect) `[FAIL]` 2026-10-16 — `packages/opencode-plugin/src/allowlist.test.ts` (plus `gateway.test.ts`, `session-catalog.test.ts`) hand-roll SDK client doubles instead of `vitest-mock-extended` `MockProxy`; `apps/mobile/src/modules/session/components/ChatScreen.test.tsx` and `session.service.test.ts` hand-roll service/transport doubles instead of an auto-mocked proxy; all five files hardcode mock data inline. No `__tests__/helpers/*.factory.ts` exists anywhere in the repo; `faker`, `vitest-mock-extended`, and `jest-mock-extended` are absent from both `package.json` files; untouched `permission-policy.test.ts` and `pairing.test.ts` share the same pattern, so the deviation pre-dates this changeset.
 - **Resolution criteria:** adopt a MockProxy-family mocking library per runner (`vitest-mock-extended` for `packages/*`, `jest-mock-extended` for the `jest-expo` app), replace the hand-rolled doubles, and introduce `faker`-backed per-feature factories; or record an explicit decision that the colocated hand-rolled convention is the project standard and reword the Crucible 🔥 (Test Architect) ruleset accordingly (including the two [UNCERTAIN] runner/library-consistency items raised on 2026-10-16).
 - **Explicit deferral decision:** User, 2026-10-16 — accepted the deviation for the `session-activity-20261013` release; no test defect was found (convention violations only) and the rule is unsatisfiable as written on the `jest-expo` app.
+
+<!-- project:end -->
+

@@ -1,0 +1,470 @@
+schema: 1
+core_revision: 534fa9dd07997117cf1fb2b0f5c20a52b23cb3ff
+root: AGENTS.md
+bindings:
+- source: AGENTS.md
+  destinations:
+  - AGENTS.md
+- source: opencode.jsonc
+  destinations:
+  - opencode.jsonc
+- source: knowledge/agents.md
+  destinations:
+  - knowledge/agents.md
+- source: knowledge/debt.md
+  destinations:
+  - knowledge/debt.md
+- source: knowledge/problems.md
+  destinations:
+  - knowledge/problems.md
+- source: knowledge/symptoms.md
+  destinations:
+  - knowledge/symptoms.md
+- source: knowledge/diagnostic-system-design.md
+  destinations:
+  - knowledge/diagnostic-system-design.md
+- source: .opencode/skills/git-branch-name/SKILL.md
+  destinations:
+  - .opencode/skills/git-branch-name/SKILL.md
+- source: .opencode/skills/git-commit/SKILL.md
+  destinations:
+  - .opencode/skills/git-commit/SKILL.md
+- source: .opencode/skills/git-pr/SKILL.md
+  destinations:
+  - .opencode/skills/git-pr/SKILL.md
+- source: .opencode/skills/op-agent-creator/SKILL.md
+  destinations:
+  - .opencode/skills/op-agent-creator/SKILL.md
+- source: .opencode/skills/op-agent-creator/references/governed-roster-code-reviewer.md
+  destinations:
+  - .opencode/skills/op-agent-creator/references/governed-roster-code-reviewer.md
+- source: .opencode/skills/op-model/SKILL.md
+  destinations:
+  - .opencode/skills/op-model/SKILL.md
+- source: .opencode/skills/op-model/scripts/models.py
+  destinations:
+  - .opencode/skills/op-model/scripts/models.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/__init__.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/__init__.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/_test_support.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/_test_support.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/application/__init__.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/application/__init__.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/application/find_models.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/application/find_models.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/application/test_find_models.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/application/test_find_models.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/domain/__init__.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/domain/__init__.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/domain/catalog.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/domain/catalog.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/domain/test_catalog.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/domain/test_catalog.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/domain/test_matching.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/domain/test_matching.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/e2e/__init__.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/e2e/__init__.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/e2e/conftest.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/e2e/conftest.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/e2e/test_models_cli.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/e2e/test_models_cli.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/infrastructure/__init__.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/infrastructure/__init__.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/infrastructure/cli.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/infrastructure/cli.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/infrastructure/process.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/infrastructure/process.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/infrastructure/test_cli.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/infrastructure/test_cli.py
+- source: .opencode/skills/op-model/scripts/op_model_lookup/infrastructure/test_process.py
+  destinations:
+  - .opencode/skills/op-model/scripts/op_model_lookup/infrastructure/test_process.py
+- source: .opencode/skills/op-skill-creator/SKILL.md
+  destinations:
+  - .opencode/skills/op-skill-creator/SKILL.md
+- source: .opencode/skills/plan-enforce/SKILL.md
+  destinations:
+  - .opencode/skills/plan-enforce/SKILL.md
+- source: .opencode/skills/plan-enforce/references/_consistency-checklist.md
+  destinations:
+  - .opencode/skills/plan-enforce/references/_consistency-checklist.md
+- source: .opencode/skills/plan-enforce/references/_lifecycle-contract.md
+  destinations:
+  - .opencode/skills/plan-enforce/references/_lifecycle-contract.md
+- source: .opencode/skills/plan-enforce/references/_phase-template.md
+  destinations:
+  - .opencode/skills/plan-enforce/references/_phase-template.md
+- source: .opencode/skills/plan-enforce/references/_template-programming.md
+  destinations:
+  - .opencode/skills/plan-enforce/references/_template-programming.md
+- source: .opencode/skills/plan-enforce/references/_template.md
+  destinations:
+  - .opencode/skills/plan-enforce/references/_template.md
+- source: .opencode/skills/plan-enforce/scripts/_validate_plan_testkit.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/_validate_plan_testkit.py
+- source: .opencode/skills/plan-enforce/scripts/plan_validate_pkg/__init__.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/plan_validate_pkg/__init__.py
+- source: .opencode/skills/plan-enforce/scripts/plan_validate_pkg/application/__init__.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/plan_validate_pkg/application/__init__.py
+- source: .opencode/skills/plan-enforce/scripts/plan_validate_pkg/application/validate.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/plan_validate_pkg/application/validate.py
+- source: .opencode/skills/plan-enforce/scripts/plan_validate_pkg/domain/__init__.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/plan_validate_pkg/domain/__init__.py
+- source: .opencode/skills/plan-enforce/scripts/plan_validate_pkg/domain/rules.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/plan_validate_pkg/domain/rules.py
+- source: .opencode/skills/plan-enforce/scripts/plan_validate_pkg/entry.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/plan_validate_pkg/entry.py
+- source: .opencode/skills/plan-enforce/scripts/plan_validate_pkg/infrastructure/__init__.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/plan_validate_pkg/infrastructure/__init__.py
+- source: .opencode/skills/plan-enforce/scripts/plan_validate_pkg/infrastructure/reader.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/plan_validate_pkg/infrastructure/reader.py
+- source: .opencode/skills/plan-enforce/scripts/test_validate_plan.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/test_validate_plan.py
+- source: .opencode/skills/plan-enforce/scripts/test_validate_plan_audit_gate.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/test_validate_plan_audit_gate.py
+- source: .opencode/skills/plan-enforce/scripts/test_validate_plan_cli.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/test_validate_plan_cli.py
+- source: .opencode/skills/plan-enforce/scripts/test_validate_plan_escaped_pipes.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/test_validate_plan_escaped_pipes.py
+- source: .opencode/skills/plan-enforce/scripts/test_validate_plan_goal_trace.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/test_validate_plan_goal_trace.py
+- source: .opencode/skills/plan-enforce/scripts/test_validate_plan_manifest.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/test_validate_plan_manifest.py
+- source: .opencode/skills/plan-enforce/scripts/test_validate_plan_phase_structure.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/test_validate_plan_phase_structure.py
+- source: .opencode/skills/plan-enforce/scripts/test_validate_plan_story_index.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/test_validate_plan_story_index.py
+- source: .opencode/skills/plan-enforce/scripts/test_validate_plan_template_render.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/test_validate_plan_template_render.py
+- source: .opencode/skills/plan-enforce/scripts/test_validate_plan_verification_parity.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/test_validate_plan_verification_parity.py
+- source: .opencode/skills/plan-enforce/scripts/validate_plan.py
+  destinations:
+  - .opencode/skills/plan-enforce/scripts/validate_plan.py
+- source: .opencode/skills/query-verification/SKILL.md
+  destinations:
+  - .opencode/skills/query-verification/SKILL.md
+- source: .opencode/skills/query-verification/fixtures/valid/adapter-output.json
+  destinations:
+  - .opencode/skills/query-verification/fixtures/valid/adapter-output.json
+- source: .opencode/skills/query-verification/fixtures/valid/incident-check.sql
+  destinations:
+  - .opencode/skills/query-verification/fixtures/valid/incident-check.sql
+- source: .opencode/skills/query-verification/fixtures/valid/incident-check.verifier.yaml
+  destinations:
+  - .opencode/skills/query-verification/fixtures/valid/incident-check.verifier.yaml
+- source: .opencode/skills/query-verification/references/adapter-output-v1.json
+  destinations:
+  - .opencode/skills/query-verification/references/adapter-output-v1.json
+- source: .opencode/skills/query-verification/references/case-evidence-v1.json
+  destinations:
+  - .opencode/skills/query-verification/references/case-evidence-v1.json
+- source: .opencode/skills/query-verification/references/protocol-v1.md
+  destinations:
+  - .opencode/skills/query-verification/references/protocol-v1.md
+- source: .opencode/skills/query-verification/references/verifier-sidecar-v1.yaml
+  destinations:
+  - .opencode/skills/query-verification/references/verifier-sidecar-v1.yaml
+- source: .opencode/skills/query-verification/scripts/_query_verification_testkit.py
+  destinations:
+  - .opencode/skills/query-verification/scripts/_query_verification_testkit.py
+- source: .opencode/skills/query-verification/scripts/query_verification.py
+  destinations:
+  - .opencode/skills/query-verification/scripts/query_verification.py
+- source: .opencode/skills/query-verification/scripts/test_query_verification.py
+  destinations:
+  - .opencode/skills/query-verification/scripts/test_query_verification.py
+- source: .opencode/skills/query-verification/scripts/test_query_verification_execution_surface.py
+  destinations:
+  - .opencode/skills/query-verification/scripts/test_query_verification_execution_surface.py
+- source: .opencode/skills/query-verification/scripts/test_query_verification_fixtures.py
+  destinations:
+  - .opencode/skills/query-verification/scripts/test_query_verification_fixtures.py
+- source: .opencode/skills/query-verification/scripts/test_query_verification_paths.py
+  destinations:
+  - .opencode/skills/query-verification/scripts/test_query_verification_paths.py
+- source: .opencode/skills/query-verification/scripts/test_query_verification_sidecar_schema.py
+  destinations:
+  - .opencode/skills/query-verification/scripts/test_query_verification_sidecar_schema.py
+- source: .opencode/skills/query-verification/scripts/test_query_verification_sql_safety.py
+  destinations:
+  - .opencode/skills/query-verification/scripts/test_query_verification_sql_safety.py
+- source: .opencode/skills/ticket-runbook/SKILL.md
+  destinations:
+  - .opencode/skills/ticket-runbook/SKILL.md
+- source: .opencode/skills/ticket-runbook/references/_consistency-checklist.md
+  destinations:
+  - .opencode/skills/ticket-runbook/references/_consistency-checklist.md
+- source: .opencode/skills/ticket-runbook/references/analysis/01-identify.md
+  destinations:
+  - .opencode/skills/ticket-runbook/references/analysis/01-identify.md
+- source: .opencode/skills/ticket-runbook/references/analysis/02-investigate.md
+  destinations:
+  - .opencode/skills/ticket-runbook/references/analysis/02-investigate.md
+- source: .opencode/skills/ticket-runbook/references/analysis/03-synthesize.md
+  destinations:
+  - .opencode/skills/ticket-runbook/references/analysis/03-synthesize.md
+- source: .opencode/skills/ticket-runbook/references/analysis/state.md
+  destinations:
+  - .opencode/skills/ticket-runbook/references/analysis/state.md
+- source: .opencode/skills/ticket-runbook/references/response-draft-template.md
+  destinations:
+  - .opencode/skills/ticket-runbook/references/response-draft-template.md
+- source: .opencode/skills/ticket-runbook/references/ticket-template.md
+  destinations:
+  - .opencode/skills/ticket-runbook/references/ticket-template.md
+- source: .opencode/skills/ticket-runbook/scripts/_ticket_runbook_testkit.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/_ticket_runbook_testkit.py
+- source: .opencode/skills/ticket-runbook/scripts/e2e/test_validate_runbook_citation_comments.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/e2e/test_validate_runbook_citation_comments.py
+- source: .opencode/skills/ticket-runbook/scripts/test_validate_runbook.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/test_validate_runbook.py
+- source: .opencode/skills/ticket-runbook/scripts/test_validate_runbook_cli.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/test_validate_runbook_cli.py
+- source: .opencode/skills/ticket-runbook/scripts/test_validate_runbook_close_out.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/test_validate_runbook_close_out.py
+- source: .opencode/skills/ticket-runbook/scripts/test_validate_runbook_concurrent_session.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/test_validate_runbook_concurrent_session.py
+- source: .opencode/skills/ticket-runbook/scripts/test_validate_runbook_header_budgets.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/test_validate_runbook_header_budgets.py
+- source: .opencode/skills/ticket-runbook/scripts/test_validate_runbook_paths.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/test_validate_runbook_paths.py
+- source: .opencode/skills/ticket-runbook/scripts/test_validate_runbook_pre_close.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/test_validate_runbook_pre_close.py
+- source: .opencode/skills/ticket-runbook/scripts/test_validate_runbook_register_first.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/test_validate_runbook_register_first.py
+- source: .opencode/skills/ticket-runbook/scripts/test_validate_runbook_sla_clock.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/test_validate_runbook_sla_clock.py
+- source: .opencode/skills/ticket-runbook/scripts/test_validate_runbook_step_mode.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/test_validate_runbook_step_mode.py
+- source: .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/__init__.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/__init__.py
+- source: .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/__init__.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/__init__.py
+- source: .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/test_clock_injection.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/test_clock_injection.py
+- source: .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/validate.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/validate.py
+- source: .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/validate_close_out.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/validate_close_out.py
+- source: .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/validate_pre_close.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/validate_pre_close.py
+- source: .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/validate_scaffold.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/validate_scaffold.py
+- source: .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/validate_step.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/application/validate_step.py
+- source: .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/domain/__init__.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/domain/__init__.py
+- source: .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/domain/rules.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/domain/rules.py
+- source: .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/entry.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/entry.py
+- source: .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/test_clock_compatibility.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/ticket_runbook_pkg/test_clock_compatibility.py
+- source: .opencode/skills/ticket-runbook/scripts/validate_runbook.py
+  destinations:
+  - .opencode/skills/ticket-runbook/scripts/validate_runbook.py
+- source: .opencode/skills/user-story/SKILL.md
+  destinations:
+  - .opencode/skills/user-story/SKILL.md
+- source: .opencode/skills/user-story/references/_classification-guide.md
+  destinations:
+  - .opencode/skills/user-story/references/_classification-guide.md
+- source: .opencode/skills/user-story/references/_consistency-checklist.md
+  destinations:
+  - .opencode/skills/user-story/references/_consistency-checklist.md
+- source: .opencode/skills/user-story/references/_template-user-story.md
+  destinations:
+  - .opencode/skills/user-story/references/_template-user-story.md
+- source: .opencode/agents/lumen.md
+  destinations:
+  - .opencode/agents/lumen.md
+- source: agents/lumen/profile.md
+  destinations:
+  - agents/lumen/profile.md
+- source: .opencode/agents/atrium.md
+  destinations:
+  - .opencode/agents/atrium.md
+- source: .opencode/agents/augur.md
+  destinations:
+  - .opencode/agents/augur.md
+- source: .opencode/agents/bastion.md
+  destinations:
+  - .opencode/agents/bastion.md
+- source: .opencode/agents/crucible.md
+  destinations:
+  - .opencode/agents/crucible.md
+- source: .opencode/agents/forge.md
+  destinations:
+  - .opencode/agents/forge.md
+- source: .opencode/agents/herald.md
+  destinations:
+  - .opencode/agents/herald.md
+- source: .opencode/agents/inquisitor.md
+  destinations:
+  - .opencode/agents/inquisitor.md
+- source: .opencode/agents/investigator.md
+  destinations:
+  - .opencode/agents/investigator.md
+- source: .opencode/agents/ledger.md
+  destinations:
+  - .opencode/agents/ledger.md
+- source: .opencode/agents/marshal.md
+  destinations:
+  - .opencode/agents/marshal.md
+- source: .opencode/agents/quill.md
+  destinations:
+  - .opencode/agents/quill.md
+- source: .opencode/agents/scribe.md
+  destinations:
+  - .opencode/agents/scribe.md
+- source: .opencode/agents/sentinel.md
+  destinations:
+  - .opencode/agents/sentinel.md
+- source: .opencode/agents/vault.md
+  destinations:
+  - .opencode/agents/vault.md
+- source: .opencode/agents/warden.md
+  destinations:
+  - .opencode/agents/warden.md
+- source: agents/atrium/profile.md
+  destinations:
+  - agents/atrium/profile.md
+- source: agents/augur/profile.md
+  destinations:
+  - agents/augur/profile.md
+- source: agents/bastion/profile.md
+  destinations:
+  - agents/bastion/profile.md
+- source: agents/cipher/profile.md
+  destinations:
+  - agents/cipher/profile.md
+- source: agents/crucible/profile.md
+  destinations:
+  - agents/crucible/profile.md
+- source: agents/forge/profile.md
+  destinations:
+  - agents/forge/profile.md
+- source: agents/herald/profile.md
+  destinations:
+  - agents/herald/profile.md
+- source: agents/inquisitor/profile.md
+  destinations:
+  - agents/inquisitor/profile.md
+- source: agents/investigator/profile.md
+  destinations:
+  - agents/investigator/profile.md
+- source: agents/ledger/profile.md
+  destinations:
+  - agents/ledger/profile.md
+- source: agents/marshal/profile.md
+  destinations:
+  - agents/marshal/profile.md
+- source: agents/quill/profile.md
+  destinations:
+  - agents/quill/profile.md
+- source: agents/scribe/profile.md
+  destinations:
+  - agents/scribe/profile.md
+- source: agents/sentinel/profile.md
+  destinations:
+  - agents/sentinel/profile.md
+- source: agents/vault/profile.md
+  destinations:
+  - agents/vault/profile.md
+- source: agents/warden/profile.md
+  destinations:
+  - agents/warden/profile.md
+- source: user-stories/clean-architecture-contract.md
+  destinations:
+  - user-stories/clean-architecture-contract.md
+- source: user-stories/diagnostic-system.md
+  destinations:
+  - user-stories/diagnostic-system.md
+- source: user-stories/git-pr-drafting.md
+  destinations:
+  - user-stories/git-pr-drafting.md
+- source: user-stories/incident-query-verification.md
+  destinations:
+  - user-stories/incident-query-verification.md
+- source: user-stories/op-model-configuration.md
+  destinations:
+  - user-stories/op-model-configuration.md
+- source: user-stories/plan-lifecycle-governance.md
+  destinations:
+  - user-stories/plan-lifecycle-governance.md
+- source: user-stories/post-merge-branch-cleanup.md
+  destinations:
+  - user-stories/post-merge-branch-cleanup.md
+- source: user-stories/pr-test-evidence-collection.md
+  destinations:
+  - user-stories/pr-test-evidence-collection.md
+- source: user-stories/register-first-incident-identification.md
+  destinations:
+  - user-stories/register-first-incident-identification.md
+- source: user-stories/safe-roster-parallelism.md
+  destinations:
+  - user-stories/safe-roster-parallelism.md
+- source: user-stories/user-story.md
+  destinations:
+  - user-stories/user-story.md
+pending: []

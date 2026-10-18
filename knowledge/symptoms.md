@@ -1,3 +1,4 @@
+<!-- core:begin -->
 # Diagnostic Symptom Catalog
 
 This catalog is the fixed, durable index of error-signature classes shared by incident and dev work; each class carries the matching signals used by identification, the canonical diagnostic, and the fix routing.
@@ -25,3 +26,7 @@ This catalog is the fixed, durable index of error-signature classes shared by in
 ## Register
 
 Filed instances live in `knowledge/problems.md`.
+<!-- core:end -->
+
+<!-- project:begin -->
+<!-- project:end -->
