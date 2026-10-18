@@ -26,7 +26,7 @@ Each entry MUST include:
 
 <!-- project:begin -->
 
-**Next ID:** DEBT-010 (ID allocation rule: bootstrap once from verified history — high-water `DEBT-008` + 1; history checked 2026-10-17, 001–008 contiguous, no retirements)
+**Next ID:** DEBT-010 (ID allocation rule: bootstrap once from verified history — high-water `DEBT-008` + 1 = `DEBT-009`, issued and retired 2026-10-17 within this same changeset; retired IDs are never reused and gaps are valid history; history checked 2026-10-17, 001–008 contiguous, no prior retirements)
 
 ### DEBT-001 — Rate limiters are process-global, not per-source
 
@@ -92,12 +92,5 @@ Each entry MUST include:
 - **Resolution criteria:** adopt a MockProxy-family mocking library per runner (`vitest-mock-extended` for `packages/*`, `jest-mock-extended` for the `jest-expo` app), replace the hand-rolled doubles, and introduce `faker`-backed per-feature factories; or record an explicit decision that the colocated hand-rolled convention is the project standard and reword the Crucible 🔥 (Test Architect) ruleset accordingly (including the two [UNCERTAIN] runner/library-consistency items raised on 2026-10-16).
 - **Explicit deferral decision:** User, 2026-10-16 — accepted the deviation for the `session-activity-20261013` release; no test defect was found (convention violations only) and the rule is unsatisfiable as written on the `jest-expo` app.
 
-### DEBT-009 — Mirrored skill test suites are not runnable in this repo
-
-- **Date:** 2026-10-17
-- **Description:** The AICore-synced skill test suites (plan-enforce `test_validate_plan*.py`, `op-model/scripts/op_model_lookup/`, `query-verification/scripts/test_*.py`, `ticket-runbook/scripts/test_*.py` — 218 test methods across 35 modules) are pytest-style: bare `*Tests` classes with `tmp_path`/`monkeypatch` injection, and ten modules import `pytest`. This repository deliberately keeps no Python test framework — no `pyproject.toml`/`uv.lock` exists and `pytest` is not installed — so the mirrored suites cannot be collected or run here and are verified upstream only. The skill validators themselves remain in use and runnable (`python3` + PyYAML 6.0.3): `validate_plan.py`, `validate_runbook.py`, `query_verification.py`.
-- **Direct evidence:** `python3 -c "import pytest"` → `ModuleNotFoundError: No module named 'pytest'` (2026-10-17; PyYAML 6.0.3 imports cleanly); no `pyproject.toml` or `uv.lock` at the repository root (glob-verified 2026-10-17); `grep -l "unittest.TestCase" .opencode/skills/**` returns zero files while ten test modules contain `import pytest`; Crucible 🔥 (Test Architect) `[FAIL]` 2026-10-17 — the reviewed whole-suite command `uv run --frozen --group dev pytest -q` exits 2 (`Failed to spawn: pytest`), 0 of the four trees runnable, while the same audit passed hermetic-fixture and hand-written-expectation checks.
-- **Resolution criteria:** either (a) this repository adopts a Python test environment for the mirrored suites — a uv project whose dev group provides pytest, matching the `agents.crucible.permissions` grant — and all four suite trees run green with recorded evidence, or (b) an explicit permanent decision that mirrored skill suites are upstream-run-only is recorded and the `uv run --frozen --group dev pytest -q` grant is removed from `opencode.jsonc` as dead configuration. Until one of these happens the mirrored suites must never be reported as passed in this repository.
-- **Explicit deferral decision:** User, 2026-10-17 — instructed "u can drop the python thing we are not using it rigth?" when asked about the test-runner posture; no Python test environment is added by this release and the suites stay upstream-run-only.
-
 <!-- project:end -->
+

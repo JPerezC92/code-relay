@@ -58,7 +58,6 @@
             "permissions": [
                 { "action": "shell", "resource": "*", "effect": "deny" },
                 { "action": "shell", "resource": "pnpm install", "effect": "allow" },
-                { "action": "shell", "resource": "uv run --frozen --group dev pytest -q", "effect": "allow" },
                 // Read-only discovery so the test architect can inspect the tree
                 // with `rg`/`ls`. Use Glob/Grep for filesystem discovery. Editing,
                 // network, and interpreter access stay denied. TUI restart required.
