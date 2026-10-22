@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ActionError } from '@coderelay/protocol';
+import type { Action } from '@coderelay/protocol';
 import {
+  ALLOWED_ACTION_TYPES,
+  ALLOWED_SDK_METHODS,
   AllowlistError,
+  DENIED_SDK_METHODS,
+  HostCallFailedError,
+  assertAllowedSdkMethod,
   executeAllowedAction,
   executeRawAction,
   isAllowedSdkMethod,
@@ -9,11 +15,16 @@ import {
   toSdkCall,
 } from './allowlist';
 import type {
+  AllowedActionResult,
+  ModelLookupOptions,
   OpenCodeClientLike,
   OpenCodeSdkResult,
+  PermissionReplyOptions,
+  SessionContextOptions,
+  SessionInterruptOptions,
   SessionListOptions,
-  SessionMessagesOptions,
-  SessionStatusOptions,
+  SessionPromptOptions,
+  SessionSwitchModelOptions,
 } from './allowlist';
 
 const ALPHA_DIRECTORY = '/home/user/proj-alpha';
@@ -24,63 +35,100 @@ function createClient() {
     data: [],
     error: undefined,
   }));
-  const status = vi.fn(async (_options?: SessionStatusOptions): Promise<OpenCodeSdkResult> => ({
+  const active = vi.fn(async (): Promise<OpenCodeSdkResult> => ({
     data: {},
     error: undefined,
   }));
-  const messages = vi.fn(async (_options: SessionMessagesOptions): Promise<OpenCodeSdkResult> => ({
+  const context = vi.fn(async (_options: SessionContextOptions): Promise<OpenCodeSdkResult> => ({
     data: [],
     error: undefined,
   }));
-  const promptAsync = vi.fn(async (): Promise<OpenCodeSdkResult> => ({
+  const switchModel = vi.fn(
+    async (_options: SessionSwitchModelOptions): Promise<OpenCodeSdkResult> => ({
+      data: undefined,
+      error: undefined,
+    }),
+  );
+  const prompt = vi.fn(async (_options: SessionPromptOptions): Promise<OpenCodeSdkResult> => ({
     data: undefined,
     error: undefined,
   }));
-  const abort = vi.fn(async (): Promise<OpenCodeSdkResult> => ({
+  const interrupt = vi.fn(async (_options: SessionInterruptOptions): Promise<OpenCodeSdkResult> => ({
     data: true,
     error: undefined,
   }));
-  const postSessionIdPermissionsPermissionId = vi.fn(async (): Promise<OpenCodeSdkResult> => ({
-    data: true,
+  const permissionReply = vi.fn(
+    async (_options: PermissionReplyOptions): Promise<OpenCodeSdkResult> => ({
+      data: true,
+      error: undefined,
+    }),
+  );
+  const modelList = vi.fn(async (_options?: ModelLookupOptions): Promise<OpenCodeSdkResult> => ({
+    data: [],
     error: undefined,
   }));
-  const providerList = vi.fn(async (): Promise<OpenCodeSdkResult> => ({
-    data: { all: [] },
-    error: undefined,
-  }));
-  const configProviders = vi.fn(async (): Promise<OpenCodeSdkResult> => ({
-    data: { providers: [] },
+  const modelDefault = vi.fn(async (_options?: ModelLookupOptions): Promise<OpenCodeSdkResult> => ({
+    data: null,
     error: undefined,
   }));
   const client: OpenCodeClientLike = {
-    session: { list, status, messages, promptAsync, abort },
-    provider: { list: providerList },
-    config: { providers: configProviders },
-    postSessionIdPermissionsPermissionId,
+    session: { list, active, context, switchModel, prompt, interrupt },
+    model: { list: modelList, default: modelDefault },
+    permission: { reply: permissionReply },
   };
   return {
     client,
     list,
-    status,
-    messages,
-    promptAsync,
-    abort,
-    postSessionIdPermissionsPermissionId,
-    providerList,
-    configProviders,
+    active,
+    context,
+    switchModel,
+    prompt,
+    interrupt,
+    permissionReply,
+    modelList,
+    modelDefault,
   };
 }
 
 describe('allowlist', () => {
-  it('allows only the protocol actions and their SDK methods', () => {
-    expect(isAllowedSdkMethod('session.list')).toBe(true);
-    expect(isAllowedSdkMethod('session.status')).toBe(true);
-    expect(isAllowedSdkMethod('session.messages')).toBe(true);
-    expect(isAllowedSdkMethod('session.promptAsync')).toBe(true);
-    expect(isAllowedSdkMethod('session.abort')).toBe(true);
-    expect(isAllowedSdkMethod('postSessionIdPermissionsPermissionId')).toBe(true);
-    expect(isAllowedSdkMethod('provider.list')).toBe(true);
-    expect(isAllowedSdkMethod('config.providers')).toBe(true);
+  it('allows exactly the seven actions and the V2 operations serving them', () => {
+    expect(ALLOWED_ACTION_TYPES).toStrictEqual([
+      'session.list',
+      'session.status',
+      'session.messages',
+      'session.prompt',
+      'session.abort',
+      'permission.reply',
+      'model.list',
+    ]);
+    expect(ALLOWED_SDK_METHODS).toStrictEqual([
+      'session.list',
+      'session.active',
+      'session.context',
+      'session.switchModel',
+      'session.prompt',
+      'session.interrupt',
+      'permission.reply',
+      'model.list',
+      'model.default',
+    ]);
+    for (const method of ALLOWED_SDK_METHODS) {
+      expect(isAllowedSdkMethod(method)).toBe(true);
+    }
+  });
+
+  it('denies the V1 method names and provider.list on the V2 surface', () => {
+    for (const method of [
+      'session.status',
+      'session.messages',
+      'session.promptAsync',
+      'session.abort',
+      'postSessionIdPermissionsPermissionId',
+      'provider.list',
+      'config.providers',
+    ]) {
+      expect(isAllowedSdkMethod(method)).toBe(false);
+    }
   });
 
   it('denies shell, file, and auth SDK methods', () => {
@@ -98,6 +146,16 @@ describe('allowlist', () => {
     }
   });
 
+  it('keeps the denied SDK method list truthful documentation under deny-by-default', () => {
+    for (const method of DENIED_SDK_METHODS) {
+      expect(isAllowedSdkMethod(method)).toBe(false);
+      expect(assertAllowedSdkMethod(method)).toBeInstanceOf(AllowlistError);
+    }
+    for (const method of ALLOWED_SDK_METHODS) {
+      expect(DENIED_SDK_METHODS).not.toContain(method);
+    }
+  });
+
   it('returns a typed deny error for shell, file, and auth actions', async () => {
     const { client } = createClient();
     const denied = [
@@ -109,6 +167,22 @@ describe('allowlist', () => {
     for (const raw of denied) {
       const result = await executeRawAction(client, raw);
       expect(result).toBeInstanceOf(AllowlistError);
+    }
+  });
+
+  it('raises AllowlistError for every action type outside the permitted seven', async () => {
+    const { client } = createClient();
+    const denied = [
+      { type: 'session.get', sessionID: 's1' },
+      { type: 'session.context', sessionID: 's1' },
+      { type: 'session.interrupt', sessionID: 's1' },
+      { type: 'session.active', sessionID: 's1' },
+      { type: 'session.switchModel', sessionID: 's1' },
+      { type: 'model.default' },
+      { type: 'session.move', sessionID: 's1', directory: '/host' },
+    ];
+    for (const raw of denied) {
+      expect(await executeRawAction(client, raw)).toBeInstanceOf(AllowlistError);
     }
   });
 
@@ -130,7 +204,7 @@ describe('allowlist', () => {
     expect(result).toBeInstanceOf(ActionError);
   });
 
-  it('executes an allowlisted prompt through promptAsync with text parts', async () => {
+  it('executes an allowlisted prompt through switchModel and prompt with text parts', async () => {
     const mocks = createClient();
     const result = await executeAllowedAction(mocks.client, {
       type: 'session.prompt',
@@ -139,13 +213,11 @@ describe('allowlist', () => {
       model: PROMPT_MODEL,
     });
     expect(result).toStrictEqual({ type: 'session.prompt', value: null });
-    expect(mocks.promptAsync).toHaveBeenCalledWith({
-      path: { id: 's1' },
-      body: {
-        model: PROMPT_MODEL,
-        parts: [{ type: 'text', text: 'hello' }],
-      },
+    expect(mocks.switchModel).toHaveBeenCalledWith({
+      sessionID: 's1',
+      model: { id: 'gpt-test', providerID: 'openai' },
     });
+    expect(mocks.prompt).toHaveBeenCalledWith({ sessionID: 's1', text: 'hello' });
   });
 
   it('keeps the existing raw session.list result behavior', async () => {
@@ -161,24 +233,20 @@ describe('allowlist', () => {
 
   it('projects session messages to the mobile-safe info and text-part shape', async () => {
     const mocks = createClient();
-    mocks.messages.mockResolvedValue({
+    mocks.context.mockResolvedValue({
       data: [
         {
-          info: {
-            id: 'message-1',
-            sessionID: 'session-1',
-            role: 'assistant',
-            path: { cwd: '/host/project', root: '/host' },
-            metadata: { private: true },
-            projectID: 'project-1',
-            directory: '/host/project',
-          },
-          parts: [
-            { type: 'text', text: 'Safe reply', metadata: { private: true } },
-            { type: 'tool', tool: { path: '/host/project' } },
-          ],
+          id: 'message-1',
+          type: 'assistant',
+          sessionID: 'session-1',
           path: { cwd: '/host/project', root: '/host' },
           metadata: { private: true },
+          projectID: 'project-1',
+          directory: '/host/project',
+          content: [
+            { type: 'text', text: 'Safe reply', metadata: { private: true } },
+            { type: 'tool', path: { cwd: '/host/project' } },
+          ],
         },
       ],
       error: undefined,
@@ -205,21 +273,22 @@ describe('allowlist', () => {
 
   it('projects reasoning, edit, patch, and task parts without tool output or cwd', async () => {
     const mocks = createClient();
-    mocks.messages.mockResolvedValue({
+    mocks.context.mockResolvedValue({
       data: [
         {
-          info: { id: 'message-1', sessionID: 'session-1', role: 'assistant' },
-          parts: [
+          id: 'message-1',
+          type: 'assistant',
+          content: [
             {
               type: 'reasoning',
               id: 'reason-1',
               text: 'Reasoning text',
-              time: { start: 5, end: 15, extra: true },
+              time: { created: 5, completed: 15, extra: true },
             },
             {
               type: 'tool',
               id: 'edit-1',
-              tool: 'edit',
+              name: 'edit',
               cwd: '/secret/cwd',
               state: {
                 status: 'completed',
@@ -238,7 +307,7 @@ describe('allowlist', () => {
             {
               type: 'tool',
               id: 'task-1',
-              tool: 'task',
+              name: 'task',
               state: {
                 status: 'running',
                 title: 'Explore',
@@ -255,7 +324,7 @@ describe('allowlist', () => {
             {
               type: 'tool',
               callID: 'task-call',
-              tool: 'task',
+              name: 'task',
               state: {
                 status: 'completed',
                 title: 'Fix hook mapping leak',
@@ -266,7 +335,7 @@ describe('allowlist', () => {
             {
               type: 'tool',
               id: 'bash-1',
-              tool: 'bash',
+              name: 'bash',
               cwd: '/secret/cwd',
               state: {
                 status: 'completed',
@@ -356,15 +425,16 @@ describe('allowlist', () => {
   it('projects edit metadata.diff and filediff counts without oldString', async () => {
     const mocks = createClient();
     const diff = '@@ -1 +1 @@\n-removed line\n+added line\n';
-    mocks.messages.mockResolvedValue({
+    mocks.context.mockResolvedValue({
       data: [
         {
-          info: { id: 'message-1', sessionID: 'session-1', role: 'assistant' },
-          parts: [
+          id: 'message-1',
+          type: 'assistant',
+          content: [
             {
               type: 'tool',
               id: 'edit-1',
-              tool: 'edit',
+              name: 'edit',
               state: {
                 status: 'completed',
                 title: 'Update file',
@@ -384,7 +454,7 @@ describe('allowlist', () => {
             {
               type: 'tool',
               id: 'write-1',
-              tool: 'write',
+              name: 'write',
               state: {
                 status: 'completed',
                 input: { filePath: '/host/project/new.ts', oldString: 'LEAKED_OLD_STRING' },
@@ -453,15 +523,16 @@ describe('allowlist', () => {
   it('projects bash, read, and grep without cwd, raw, or a duplicate command', async () => {
     const mocks = createClient();
     const longOutput = 'x'.repeat(12_001);
-    mocks.messages.mockResolvedValue({
+    mocks.context.mockResolvedValue({
       data: [
         {
-          info: { id: 'message-1', sessionID: 'session-1', role: 'assistant' },
-          parts: [
+          id: 'message-1',
+          type: 'assistant',
+          content: [
             {
               type: 'tool',
               id: 'bash-title',
-              tool: 'bash',
+              name: 'bash',
               cwd: '/secret/cwd',
               state: {
                 status: 'completed',
@@ -474,7 +545,7 @@ describe('allowlist', () => {
             {
               type: 'tool',
               id: 'bash-command',
-              tool: 'bash',
+              name: 'bash',
               state: {
                 status: 'completed',
                 input: { command: 'pwd' },
@@ -484,25 +555,25 @@ describe('allowlist', () => {
             {
               type: 'tool',
               id: 'bash-error',
-              tool: 'bash',
+              name: 'bash',
               state: { status: 'error', error: 'command failed' },
             },
             {
               type: 'tool',
               id: 'bash-long',
-              tool: 'bash',
+              name: 'bash',
               state: { status: 'completed', title: 'cat', output: longOutput },
             },
             {
               type: 'tool',
               id: 'read-1',
-              tool: 'read',
+              name: 'read',
               state: { status: 'completed', title: 'Read file' },
             },
             {
               type: 'tool',
               id: 'grep-1',
-              tool: 'grep',
+              name: 'grep',
               state: { status: 'completed', output: 'match' },
             },
           ],
@@ -580,17 +651,19 @@ describe('allowlist', () => {
     expect(serialized).not.toContain(longOutput);
   });
 
-  it('skips malformed session message records and parts', async () => {
+  it('skips malformed session message records and keeps valid ones', async () => {
     const mocks = createClient();
-    mocks.messages.mockResolvedValue({
+    mocks.context.mockResolvedValue({
       data: [
         null,
-        { info: { id: 'missing-session', role: 'assistant' }, parts: [] },
-        { info: { id: 'wrong-role', sessionID: 'session-1', role: 'system' }, parts: [] },
-        { info: { id: 'invalid-parts', sessionID: 'session-1', role: 'user' }, parts: {} },
+        { type: 'assistant', content: [] },
+        { id: 'wrong-role', type: 'system', text: 'ignored' },
+        { id: 'invalid-text', type: 'user', text: {} },
+        { id: 'invalid-content', type: 'assistant', content: {} },
         {
-          info: { id: 'message-1', sessionID: 'session-1', role: 'user' },
-          parts: [null, { type: 'tool' }, { type: 'text' }, { type: 'text', text: 'Safe text' }],
+          id: 'message-1',
+          type: 'user',
+          text: 'Safe text',
         },
       ],
       error: undefined,
@@ -609,9 +682,9 @@ describe('allowlist', () => {
     });
   });
 
-  it('returns a static AllowlistError for non-array session messages data', async () => {
+  it('returns HostCallFailedError for non-array session messages data, never modeled as a denial', async () => {
     const mocks = createClient();
-    mocks.messages.mockResolvedValue({
+    mocks.context.mockResolvedValue({
       data: { path: { cwd: '/host/project', root: '/host' } },
       error: undefined,
     });
@@ -620,19 +693,22 @@ describe('allowlist', () => {
       type: 'session.messages',
       sessionID: 'session-1',
     });
-    expect(result).toBeInstanceOf(AllowlistError);
-    if (result instanceof AllowlistError) {
+    expect(result).toBeInstanceOf(HostCallFailedError);
+    expect(result).not.toBeInstanceOf(AllowlistError);
+    if (result instanceof HostCallFailedError) {
       expect(result.message).toBe('OpenCode session messages result must be an array');
     }
   });
 
   it('projects session status to its string type only', async () => {
     const mocks = createClient();
-    mocks.status.mockResolvedValue({
+    mocks.active.mockResolvedValue({
       data: {
-        type: 'busy',
-        path: { cwd: '/host/project', root: '/host' },
-        metadata: { private: true },
+        'session-1': {
+          type: 'busy',
+          path: { cwd: '/host/project', root: '/host' },
+          metadata: { private: true },
+        },
       },
       error: undefined,
     });
@@ -641,13 +717,62 @@ describe('allowlist', () => {
       executeAllowedAction(mocks.client, { type: 'session.status', sessionID: 'session-1' }),
     ).resolves.toStrictEqual({ type: 'session.status', value: { type: 'busy' } });
 
-    mocks.status.mockResolvedValue({
-      data: { path: { cwd: '/host/project', root: '/host' } },
+    mocks.active.mockResolvedValue({
+      data: { 'session-1': { path: { cwd: '/host/project', root: '/host' } } },
       error: undefined,
     });
     await expect(
       executeAllowedAction(mocks.client, { type: 'session.status', sessionID: 'session-1' }),
     ).resolves.toStrictEqual({ type: 'session.status', value: {} });
+  });
+
+  it('projects the entry under the action session key and ignores other keyed entries', async () => {
+    const mocks = createClient();
+    mocks.active.mockResolvedValue({
+      data: {
+        'session-1': {
+          type: 'busy',
+          path: { cwd: '/host/project', root: '/host' },
+          metadata: { private: true },
+        },
+        'session-2': { type: 'idle' },
+      },
+      error: undefined,
+    });
+
+    await expect(
+      executeAllowedAction(mocks.client, { type: 'session.status', sessionID: 'session-2' }),
+    ).resolves.toStrictEqual({ type: 'session.status', value: { type: 'idle' } });
+  });
+
+  it('returns the empty status when the action session key is absent from the map', async () => {
+    const mocks = createClient();
+    mocks.active.mockResolvedValue({
+      data: {
+        'session-2': { type: 'busy', path: { cwd: '/host/project', root: '/host' } },
+      },
+      error: undefined,
+    });
+
+    await expect(
+      executeAllowedAction(mocks.client, { type: 'session.status', sessionID: 'session-1' }),
+    ).resolves.toStrictEqual({ type: 'session.status', value: {} });
+  });
+
+  it('returns HostCallFailedError for non-record session.active data, never modeled as a denial', async () => {
+    const mocks = createClient();
+    mocks.active.mockResolvedValue({ data: 'not-a-status-map', error: undefined });
+
+    const result = await executeAllowedAction(mocks.client, {
+      type: 'session.status',
+      sessionID: 'session-1',
+    });
+    expect(result).toBeInstanceOf(HostCallFailedError);
+    expect(result).not.toBeInstanceOf(AllowlistError);
+    if (result instanceof HostCallFailedError) {
+      expect(result.message).toBe('OpenCode session.active result must be a record');
+    }
+    expect(mocks.active).toHaveBeenCalledWith();
   });
 
   it('returns null for prompt, abort, and permission replies regardless of SDK data', async () => {
@@ -656,12 +781,10 @@ describe('allowlist', () => {
       path: { cwd: '/host/project', root: '/host' },
       metadata: { private: true },
     };
-    mocks.promptAsync.mockResolvedValue({ data: rawData, error: undefined });
-    mocks.abort.mockResolvedValue({ data: rawData, error: undefined });
-    mocks.postSessionIdPermissionsPermissionId.mockResolvedValue({
-      data: rawData,
-      error: undefined,
-    });
+    mocks.switchModel.mockResolvedValue({ data: rawData, error: undefined });
+    mocks.prompt.mockResolvedValue({ data: rawData, error: undefined });
+    mocks.interrupt.mockResolvedValue({ data: rawData, error: undefined });
+    mocks.permissionReply.mockResolvedValue({ data: rawData, error: undefined });
 
     await expect(
       executeAllowedAction(mocks.client, {
@@ -684,7 +807,7 @@ describe('allowlist', () => {
     ).resolves.toStrictEqual({ type: 'permission.reply', value: null });
   });
 
-  it('returns AllowlistError for SDK errors or absent data without forwarding wrappers', async () => {
+  it('returns HostCallFailedError for SDK errors or absent data, never modeled as a denial', async () => {
     const mocks = createClient();
     mocks.client.session.list = async () => ({
       data: undefined,
@@ -692,16 +815,18 @@ describe('allowlist', () => {
     });
 
     const errorResult = await executeAllowedAction(mocks.client, { type: 'session.list' });
-    expect(errorResult).toBeInstanceOf(AllowlistError);
-    if (errorResult instanceof AllowlistError) {
+    expect(errorResult).toBeInstanceOf(HostCallFailedError);
+    expect(errorResult).not.toBeInstanceOf(AllowlistError);
+    if (errorResult instanceof HostCallFailedError) {
       expect(errorResult.message).toBe('OpenCode SDK request failed');
     }
     expect(errorResult).not.toHaveProperty('value');
 
     mocks.client.session.list = async () => ({ error: undefined });
     const missingDataResult = await executeAllowedAction(mocks.client, { type: 'session.list' });
-    expect(missingDataResult).toBeInstanceOf(AllowlistError);
-    if (missingDataResult instanceof AllowlistError) {
+    expect(missingDataResult).toBeInstanceOf(HostCallFailedError);
+    expect(missingDataResult).not.toBeInstanceOf(AllowlistError);
+    if (missingDataResult instanceof HostCallFailedError) {
       expect(missingDataResult.message).toBe('OpenCode SDK result did not include data');
     }
     expect(missingDataResult).not.toHaveProperty('value');
@@ -715,17 +840,29 @@ describe('allowlist', () => {
       permissionID: 'p1',
       decision: 'reject',
     });
-    expect(mocks.postSessionIdPermissionsPermissionId).toHaveBeenCalledWith({
-      path: { id: 's1', permissionID: 'p1' },
-      body: { response: 'reject' },
+    expect(mocks.permissionReply).toHaveBeenCalledWith({
+      sessionID: 's1',
+      requestID: 'p1',
+      decision: 'reject',
     });
   });
 
-  it('maps protocol actions to allowlisted SDK calls with typed options', () => {
+  it('maps protocol actions to allowlisted V2 calls with typed options', () => {
     expect(
-      toSdkCall({ type: 'session.prompt', sessionID: 's1', text: 'hi', model: PROMPT_MODEL }).sdkMethod,
-    ).toBe('session.promptAsync');
-    expect(toSdkCall({ type: 'session.abort', sessionID: 's1' }).sdkMethod).toBe('session.abort');
+      toSdkCall({ type: 'session.prompt', sessionID: 's1', text: 'hi', model: PROMPT_MODEL }),
+    ).toStrictEqual({
+      actionType: 'session.prompt',
+      sdkMethods: ['session.switchModel', 'session.prompt'],
+      options: {
+        switchModel: { sessionID: 's1', model: { id: 'gpt-test', providerID: 'openai' } },
+        prompt: { sessionID: 's1', text: 'hi' },
+      },
+    });
+    expect(toSdkCall({ type: 'session.abort', sessionID: 's1' })).toStrictEqual({
+      actionType: 'session.abort',
+      sdkMethods: ['session.interrupt'],
+      options: { sessionID: 's1' },
+    });
     expect(
       toSdkCall({
         type: 'permission.reply',
@@ -735,16 +872,54 @@ describe('allowlist', () => {
       }),
     ).toStrictEqual({
       actionType: 'permission.reply',
-      sdkMethod: 'postSessionIdPermissionsPermissionId',
-      options: { path: { id: 's1', permissionID: 'p1' }, body: { response: 'once' } },
+      sdkMethods: ['permission.reply'],
+      options: { sessionID: 's1', requestID: 'p1', decision: 'once' },
     });
-    expect(
-      toSdkCall({ type: 'session.messages', sessionID: 's1' }),
-    ).toStrictEqual({
+    expect(toSdkCall({ type: 'session.messages', sessionID: 's1' })).toStrictEqual({
       actionType: 'session.messages',
-      sdkMethod: 'session.messages',
-      options: { path: { id: 's1' } },
+      sdkMethods: ['session.context'],
+      options: { sessionID: 's1' },
     });
+    expect(toSdkCall({ type: 'session.status', sessionID: 's1' })).toStrictEqual({
+      actionType: 'session.status',
+      sdkMethods: ['session.active'],
+      options: { sessionID: 's1' },
+    });
+    expect(toSdkCall({ type: 'session.list' })).toStrictEqual({
+      actionType: 'session.list',
+      sdkMethods: ['session.list'],
+      options: {},
+    });
+  });
+
+  it('returns the permission denial as a value from toSdkCall and never throws it', () => {
+    const poisoned = {
+      type: 'permission.reply',
+      sessionID: 's1',
+      permissionID: 'p1',
+      decision: 'always',
+    } as unknown as Action;
+
+    expect(() => toSdkCall(poisoned)).not.toThrow();
+    const result = toSdkCall(poisoned);
+    expect(result).toBeInstanceOf(AllowlistError);
+    if (result instanceof AllowlistError) {
+      expect(result.message).toBe('Denied permission decision: always');
+    }
+  });
+
+  it('returns the toSdkCall denial from executeAllowedAction without dispatching', async () => {
+    const mocks = createClient();
+    const poisoned = {
+      type: 'permission.reply',
+      sessionID: 's1',
+      permissionID: 'p1',
+      decision: 'always',
+    } as unknown as Action;
+
+    const result = await executeAllowedAction(mocks.client, poisoned);
+    expect(result).toBeInstanceOf(AllowlistError);
+    expect(mocks.permissionReply).not.toHaveBeenCalled();
   });
 
   it('makes the declared SDK allowlist the enforcement path for execution', async () => {
@@ -754,66 +929,74 @@ describe('allowlist', () => {
       sessionID: 's1',
     });
     expect(result).toStrictEqual({ type: 'session.messages', value: [] });
-    expect(mocks.messages).toHaveBeenCalledWith({ path: { id: 's1' } });
-    expect(isAllowedSdkMethod(toSdkCall({ type: 'session.messages', sessionID: 's1' }).sdkMethod)).toBe(
-      true,
-    );
+    expect(mocks.context).toHaveBeenCalledWith({ sessionID: 's1' });
+    const call = toSdkCall({ type: 'session.messages', sessionID: 's1' });
+    expect(call).not.toBeInstanceOf(AllowlistError);
+    if (call instanceof AllowlistError) throw new Error('expected a call descriptor');
+    for (const method of call.sdkMethods) {
+      expect(isAllowedSdkMethod(method)).toBe(true);
+    }
   });
 
-  it('sends the host-derived directory as the session status query', async () => {
+  it('sends no directory payload on the session status call', async () => {
     const mocks = createClient();
     await executeAllowedAction(
       mocks.client,
       { type: 'session.status', sessionID: 'session-1' },
       ALPHA_DIRECTORY,
     );
-    expect(mocks.status).toHaveBeenCalledWith({ query: { directory: ALPHA_DIRECTORY } });
+    expect(mocks.active).toHaveBeenCalledWith();
   });
 
-  it('sends the host-derived directory as the session messages query', async () => {
+  it('sends no directory payload on the session messages call', async () => {
     const mocks = createClient();
     await executeAllowedAction(
       mocks.client,
       { type: 'session.messages', sessionID: 'session-1' },
       ALPHA_DIRECTORY,
     );
-    expect(mocks.messages).toHaveBeenCalledWith({
-      path: { id: 'session-1' },
-      query: { directory: ALPHA_DIRECTORY },
-    });
+    expect(mocks.context).toHaveBeenCalledWith({ sessionID: 'session-1' });
+    const options = mocks.context.mock.calls[0]?.[0];
+    expect(options).toBeDefined();
+    expect(options).toStrictEqual({ sessionID: 'session-1' });
+    expect(Object.prototype.hasOwnProperty.call(options, 'query')).toBe(false);
+    expect(JSON.stringify(options)).not.toContain(ALPHA_DIRECTORY);
   });
 
-  it('sends the host-derived directory as the prompt query', async () => {
+  it('sends no directory payload on the prompt composite', async () => {
     const mocks = createClient();
     await executeAllowedAction(
       mocks.client,
       { type: 'session.prompt', sessionID: 'session-1', text: 'hello', model: PROMPT_MODEL },
       ALPHA_DIRECTORY,
     );
-    expect(mocks.promptAsync).toHaveBeenCalledWith({
-      path: { id: 'session-1' },
-      body: {
-        model: PROMPT_MODEL,
-        parts: [{ type: 'text', text: 'hello' }],
-      },
-      query: { directory: ALPHA_DIRECTORY },
+    expect(mocks.switchModel).toHaveBeenCalledWith({
+      sessionID: 'session-1',
+      model: { id: 'gpt-test', providerID: 'openai' },
     });
+    expect(mocks.prompt).toHaveBeenCalledWith({ sessionID: 'session-1', text: 'hello' });
+    for (const call of [...mocks.switchModel.mock.calls, ...mocks.prompt.mock.calls]) {
+      const options = call[0];
+      expect(Object.prototype.hasOwnProperty.call(options, 'query')).toBe(false);
+      expect(JSON.stringify(options)).not.toContain(ALPHA_DIRECTORY);
+    }
   });
 
-  it('sends the host-derived directory as the abort query', async () => {
+  it('sends no directory payload on the abort call', async () => {
     const mocks = createClient();
     await executeAllowedAction(
       mocks.client,
       { type: 'session.abort', sessionID: 'session-1' },
       ALPHA_DIRECTORY,
     );
-    expect(mocks.abort).toHaveBeenCalledWith({
-      path: { id: 'session-1' },
-      query: { directory: ALPHA_DIRECTORY },
-    });
+    expect(mocks.interrupt).toHaveBeenCalledWith({ sessionID: 'session-1' });
+    const options = mocks.interrupt.mock.calls[0]?.[0];
+    expect(options).toBeDefined();
+    expect(options).toStrictEqual({ sessionID: 'session-1' });
+    expect(JSON.stringify(options)).not.toContain(ALPHA_DIRECTORY);
   });
 
-  it('sends the host-derived directory as the permission reply query', async () => {
+  it('sends no directory payload on the permission reply call', async () => {
     const mocks = createClient();
     await executeAllowedAction(
       mocks.client,
@@ -825,75 +1008,79 @@ describe('allowlist', () => {
       },
       ALPHA_DIRECTORY,
     );
-    expect(mocks.postSessionIdPermissionsPermissionId).toHaveBeenCalledWith({
-      path: { id: 'session-1', permissionID: 'permission-1' },
-      body: { response: 'once' },
-      query: { directory: ALPHA_DIRECTORY },
+    expect(mocks.permissionReply).toHaveBeenCalledWith({
+      sessionID: 'session-1',
+      requestID: 'permission-1',
+      decision: 'once',
     });
+    const options = mocks.permissionReply.mock.calls[0]?.[0];
+    expect(options).toBeDefined();
+    expect(JSON.stringify(options)).not.toContain(ALPHA_DIRECTORY);
   });
 
-  it('omits the query key when the directory is undefined or empty', async () => {
+  it('threads the host-derived directory to model.list and model.default as the location scope', async () => {
+    const mocks = createClient();
+    await executeAllowedAction(mocks.client, { type: 'model.list' }, ALPHA_DIRECTORY);
+    expect(mocks.modelList).toHaveBeenCalledWith({ location: { directory: ALPHA_DIRECTORY } });
+    expect(mocks.modelDefault).toHaveBeenCalledWith({ location: { directory: ALPHA_DIRECTORY } });
+  });
+
+  it('omits the location key when the directory is undefined or empty', async () => {
     for (const directory of [undefined, '']) {
       const mocks = createClient();
-      await executeAllowedAction(
-        mocks.client,
-        { type: 'session.status', sessionID: 'session-1' },
-        directory,
-      );
-      await executeAllowedAction(
-        mocks.client,
-        { type: 'session.messages', sessionID: 'session-1' },
-        directory,
-      );
-      const statusOptions = mocks.status.mock.calls[0]?.[0];
-      const messagesOptions = mocks.messages.mock.calls[0]?.[0];
-      expect(statusOptions).toBeDefined();
-      expect(messagesOptions).toBeDefined();
-      expect(statusOptions).toStrictEqual({});
-      expect(messagesOptions).toStrictEqual({ path: { id: 'session-1' } });
-      expect(Object.prototype.hasOwnProperty.call(statusOptions, 'query')).toBe(false);
-      expect(Object.prototype.hasOwnProperty.call(messagesOptions, 'query')).toBe(false);
+      await executeAllowedAction(mocks.client, { type: 'model.list' }, directory);
+      const listOptions = mocks.modelList.mock.calls[0]?.[0];
+      const defaultOptions = mocks.modelDefault.mock.calls[0]?.[0];
+      expect(listOptions).toStrictEqual({});
+      expect(defaultOptions).toStrictEqual({});
+      expect(Object.prototype.hasOwnProperty.call(listOptions ?? {}, 'location')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(defaultOptions ?? {}, 'location')).toBe(false);
     }
   });
 
   it('projects provider payloads to labels and drops secret fields', async () => {
     const mocks = createClient();
-    mocks.configProviders.mockResolvedValue({
-      data: {
-        providers: [
-          {
-            id: 'openai',
-            name: 'OpenAI',
-            key: 'sk-secret',
-            env: ['OPENAI_API_KEY'],
-            options: { apiKey: 'sk-secret' },
-            headers: { Authorization: 'Bearer sk-secret' },
-            api: 'https://api.openai.com',
-            url: 'https://secret.example',
-            npm: '@secret/pkg',
-            models: {
-              'gpt-4': {
-                id: 'gpt-4',
-                name: 'GPT-4',
-                key: 'sk-model',
-                options: { secret: true },
-                headers: { Authorization: 'Bearer sk-secret' },
-                api: 'https://api.openai.com',
-                url: 'https://secret.example',
-                variants: {
-                  low: {
-                    body: { reasoning: 'secret-variant-body' },
-                    headers: { Authorization: 'Bearer sk-variant' },
-                    options: { secret: 'variant-option' },
-                  },
-                  high: { name: 'High' },
-                },
-              },
-              blank: { id: 'unnamed-model', name: '', variants: 'not-a-map' },
+    mocks.modelList.mockResolvedValue({
+      data: [
+        {
+          id: 'openai/gpt-4',
+          modelID: 'gpt-4',
+          providerID: 'openai',
+          name: 'GPT-4',
+          key: 'sk-secret',
+          env: ['OPENAI_API_KEY'],
+          options: { apiKey: 'sk-secret' },
+          headers: { Authorization: 'Bearer sk-secret' },
+          api: 'https://api.openai.com',
+          url: 'https://secret.example',
+          npm: '@secret/pkg',
+          variants: [
+            {
+              id: 'low',
+              body: { reasoning: 'secret-variant-body' },
+              headers: { Authorization: 'Bearer sk-variant' },
+              options: { secret: 'variant-option' },
             },
-          },
-        ],
-        default: { missing: 'nope', openai: 'gpt-4' },
+            { id: 'high', name: 'High' },
+          ],
+        },
+        {
+          id: 'openai/unnamed-model',
+          modelID: 'unnamed-model',
+          providerID: 'openai',
+          name: '',
+          variants: 'not-a-map',
+        },
+      ],
+      error: undefined,
+    });
+    mocks.modelDefault.mockResolvedValue({
+      data: {
+        id: 'openai/gpt-4',
+        modelID: 'gpt-4',
+        providerID: 'openai',
+        name: 'GPT-4',
+        key: 'sk-model',
       },
       error: undefined,
     });
@@ -932,48 +1119,55 @@ describe('allowlist', () => {
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
-    expect(mocks.configProviders).toHaveBeenCalledWith({});
-    expect(mocks.providerList).not.toHaveBeenCalled();
+    expect(mocks.modelList).toHaveBeenCalledWith({});
+    expect(mocks.modelDefault).toHaveBeenCalledWith({});
     expect(serialized).not.toContain('anthropic');
     expect(serialized).not.toContain('claude-secret');
   });
 
-  it('returns AllowlistError when the provider list omits providers', async () => {
+  it('returns HostCallFailedError when the model list result is not an array', async () => {
     const mocks = createClient();
-    mocks.configProviders.mockResolvedValue({
+    mocks.modelList.mockResolvedValue({
       data: {
-        all: [{ id: 'openai', models: { 'gpt-4': { id: 'gpt-4', name: 'GPT-4' } } }],
-        default: { openai: 'gpt-4' },
+        all: [{ id: 'openai/gpt-4', modelID: 'gpt-4', providerID: 'openai', name: 'GPT-4' }],
       },
       error: undefined,
     });
 
     const result = await executeAllowedAction(mocks.client, { type: 'model.list' });
-    expect(result).toBeInstanceOf(AllowlistError);
-    if (result instanceof AllowlistError) {
-      expect(result.message).toBe('OpenCode provider list result must include a provider array');
+    expect(result).toBeInstanceOf(HostCallFailedError);
+    expect(result).not.toBeInstanceOf(AllowlistError);
+    if (result instanceof HostCallFailedError) {
+      expect(result.message).toBe('OpenCode model list result must be an array');
     }
-    expect(mocks.configProviders).toHaveBeenCalledWith({});
-    expect(mocks.providerList).not.toHaveBeenCalled();
+    expect(mocks.modelList).toHaveBeenCalledWith({});
   });
 
-  it('projects only configured providers and ignores catalog-only models', async () => {
+  it('drops model entries that carry no providerID/modelID pair', async () => {
     const mocks = createClient();
-    mocks.configProviders.mockResolvedValue({
+    mocks.modelList.mockResolvedValue({
+      data: [
+        {
+          id: 'openai/gpt-4',
+          modelID: 'gpt-4',
+          providerID: 'openai',
+          name: 'GPT-4',
+        },
+        {
+          id: 'openai/legacy-preview',
+          providerID: 'openai',
+          name: 'Legacy preview',
+          package: 'legacy-preview',
+        },
+      ],
+      error: undefined,
+    });
+    mocks.modelDefault.mockResolvedValue({
       data: {
-        all: [
-          {
-            id: 'nano-gpt',
-            models: { 'deepseek-reasoner': { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner' } },
-          },
-        ],
-        providers: [
-          {
-            id: 'openai',
-            models: { 'gpt-4': { id: 'gpt-4', name: 'GPT-4' } },
-          },
-        ],
-        default: { openai: 'gpt-4' },
+        id: 'openai/gpt-4',
+        modelID: 'gpt-4',
+        providerID: 'openai',
+        name: 'GPT-4',
       },
       error: undefined,
     });
@@ -986,63 +1180,122 @@ describe('allowlist', () => {
         defaultModel: { providerID: 'openai', modelID: 'gpt-4' },
       },
     });
-    expect(JSON.stringify(result)).not.toContain('nano-gpt');
-    expect(JSON.stringify(result)).not.toContain('deepseek-reasoner');
-    expect(mocks.configProviders).toHaveBeenCalledWith({});
-    expect(mocks.providerList).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain('legacy-preview');
+  });
+
+  it('derives the model list solely from the model.list and model.default output', async () => {
+    const mocks = createClient();
+    const listOutput = [
+      {
+        id: 'openai/gpt-4',
+        modelID: 'gpt-4',
+        providerID: 'openai',
+        name: 'GPT-4',
+      },
+      {
+        id: 'anthropic/claude-test',
+        modelID: 'claude-test',
+        providerID: 'anthropic',
+        name: 'Claude Test',
+      },
+    ];
+    const defaultOutput = {
+      id: 'openai/gpt-4',
+      modelID: 'gpt-4',
+      providerID: 'openai',
+      name: 'GPT-4',
+    };
+    mocks.modelList.mockResolvedValue({ data: listOutput, error: undefined });
+    mocks.modelDefault.mockResolvedValue({ data: defaultOutput, error: undefined });
+
+    const result = await executeAllowedAction(mocks.client, { type: 'model.list' });
+
+    // (a) the configured-provider lookup is the only source the projection reads.
+    expect(mocks.modelList).toHaveBeenCalledWith({});
+    expect(mocks.modelDefault).toHaveBeenCalledWith({});
+
+    // (b) every emitted providerID/modelID pair appears in that captured output.
+    const sourcePairs = new Set(
+      [...listOutput, defaultOutput].map((entry) => `${entry.providerID}/${entry.modelID}`),
+    );
+    expect(result).not.toBeInstanceOf(AllowlistError);
+    expect(result).not.toBeInstanceOf(HostCallFailedError);
+    const value = (result as AllowedActionResult).value as {
+      models: Array<{ providerID: string; modelID: string }>;
+    };
+    expect(value.models.length).toBeGreaterThan(0);
+    for (const model of value.models) {
+      expect(sourcePairs.has(`${model.providerID}/${model.modelID}`)).toBe(true);
+    }
+
+    // (c) an id absent from that output is never emitted — concrete absent id,
+    // so any leak from a non-output source fails loudly.
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('nano-gpt');
+    expect(serialized).not.toContain('deepseek-reasoner');
   });
 
   it('sets defaultModel to null when the default pair is absent from providers', async () => {
     const mocks = createClient();
-    mocks.configProviders.mockResolvedValue({
+    mocks.modelList.mockResolvedValue({
+      data: [
+        {
+          id: 'openai/gpt-4',
+          modelID: 'gpt-4',
+          providerID: 'openai',
+          name: 'GPT-4',
+        },
+      ],
+      error: undefined,
+    });
+    mocks.modelDefault.mockResolvedValue({
       data: {
-        providers: [
-          {
-            id: 'openai',
-            models: { 'gpt-4': { id: 'gpt-4', name: 'GPT-4' } },
-          },
-        ],
-        default: { anthropic: 'claude-test' },
+        id: 'anthropic/claude-test',
+        modelID: 'claude-test',
+        providerID: 'anthropic',
+        name: 'Claude Test',
       },
       error: undefined,
     });
 
-    await expect(executeAllowedAction(mocks.client, { type: 'model.list' })).resolves.toStrictEqual({
+    const result = await executeAllowedAction(mocks.client, { type: 'model.list' });
+    expect(result).toStrictEqual({
       type: 'model.list',
       value: {
         models: [{ providerID: 'openai', modelID: 'gpt-4', label: 'GPT-4', variants: [] }],
         defaultModel: null,
       },
     });
-    expect(mocks.configProviders).toHaveBeenCalledWith({});
-    expect(mocks.providerList).not.toHaveBeenCalled();
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('anthropic');
+    expect(serialized).not.toContain('claude-test');
+    expect(mocks.modelList).toHaveBeenCalledWith({});
   });
 
-  it('projects variant ids from object keys and id arrays without variant bodies', async () => {
+  it('projects variant ids from the variant list without variant bodies', async () => {
     const mocks = createClient();
-    mocks.configProviders.mockResolvedValue({
-      data: {
-        providers: [
-          {
-            id: 'openai',
-            models: [
-              {
-                id: 'gpt-4',
-                name: 'GPT-4',
-                variants: [
-                  { id: 'low', body: { reasoning: 'array-variant-body' }, headers: { x: 'array-variant-header' } },
-                  { id: '', body: { leak: 'empty-id-body' } },
-                  { name: 'no-id', headers: { x: 'no-id-header' } },
-                  { id: 'high' },
-                ],
-              },
-            ],
-          },
-        ],
-        default: {},
-      },
+    mocks.modelList.mockResolvedValue({
+      data: [
+        {
+          id: 'openai/gpt-4',
+          modelID: 'gpt-4',
+          providerID: 'openai',
+          name: 'GPT-4',
+          variants: [
+            {
+              id: 'low',
+              body: { reasoning: 'array-variant-body' },
+              headers: { x: 'array-variant-header' },
+            },
+            { id: '', body: { leak: 'empty-id-body' } },
+            { name: 'no-id', headers: { x: 'no-id-header' } },
+            { id: 'high' },
+          ],
+        },
+      ],
       error: undefined,
     });
+    mocks.modelDefault.mockResolvedValue({ data: null, error: undefined });
 
     const result = await executeAllowedAction(mocks.client, { type: 'model.list' });
     expect(result).toStrictEqual({
@@ -1058,7 +1311,7 @@ describe('allowlist', () => {
     }
   });
 
-  it('sends the selected model ref on session.prompt', async () => {
+  it('sends the selected model ref before session.prompt', async () => {
     const mocks = createClient();
     const model = { providerID: 'anthropic', modelID: 'claude-test' };
     await executeAllowedAction(mocks.client, {
@@ -1067,20 +1320,18 @@ describe('allowlist', () => {
       text: 'hello',
       model,
     });
-    expect(mocks.promptAsync).toHaveBeenCalledWith({
-      path: { id: 's1' },
-      body: {
-        model,
-        parts: [{ type: 'text', text: 'hello' }],
-      },
+    expect(mocks.switchModel).toHaveBeenCalledWith({
+      sessionID: 's1',
+      model: { id: 'claude-test', providerID: 'anthropic' },
     });
-    const [promptCall] = mocks.promptAsync.mock.calls as ReadonlyArray<
-      readonly [{ body?: object }?]
+    expect(mocks.prompt).toHaveBeenCalledWith({ sessionID: 's1', text: 'hello' });
+    const [switchCall] = mocks.switchModel.mock.calls as ReadonlyArray<
+      readonly [{ model?: object }?]
     >;
-    expect(promptCall?.[0]?.body).not.toHaveProperty('variant');
+    expect(switchCall?.[0]?.model).not.toHaveProperty('variant');
   });
 
-  it('sends a non-empty variant on the prompt_async body and not on the model', async () => {
+  it('sends a non-empty variant on the model ref and not on the prompt request', async () => {
     const mocks = createClient();
     await executeAllowedAction(mocks.client, {
       type: 'session.prompt',
@@ -1088,14 +1339,14 @@ describe('allowlist', () => {
       text: 'hello',
       model: { providerID: 'anthropic', modelID: 'claude-test', variant: 'high' },
     });
-    expect(mocks.promptAsync).toHaveBeenCalledWith({
-      path: { id: 's1' },
-      body: {
-        model: { providerID: 'anthropic', modelID: 'claude-test' },
-        parts: [{ type: 'text', text: 'hello' }],
-        variant: 'high',
-      },
+    expect(mocks.switchModel).toHaveBeenCalledWith({
+      sessionID: 's1',
+      model: { id: 'claude-test', providerID: 'anthropic', variant: 'high' },
     });
+    expect(mocks.prompt).toHaveBeenCalledWith({ sessionID: 's1', text: 'hello' });
+    const [promptCall] = mocks.prompt.mock.calls as ReadonlyArray<readonly [object?]>;
+    expect(promptCall?.[0]).not.toHaveProperty('variant');
+    expect(promptCall?.[0]).not.toHaveProperty('model');
   });
 
   it('keeps provider.auth denied', () => {

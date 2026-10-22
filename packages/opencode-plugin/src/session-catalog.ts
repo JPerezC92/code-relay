@@ -1,13 +1,10 @@
 import { createHash } from 'node:crypto';
-import type { OpencodeClient } from '@opencode-ai/sdk';
+import { HostCallFailedError } from './allowlist';
 import type { OpenCodeSdkResult, OpenCodeSessionApi } from './allowlist';
 
-type ProjectApi = OpencodeClient['project'];
-
-export type ProjectListOptions = Parameters<ProjectApi['list']>[0];
-
+/** Structural port for the catalog's unfiltered `project.list` call. */
 export interface OpenCodeProjectApi {
-  list(options?: ProjectListOptions): Promise<OpenCodeSdkResult>;
+  list(): Promise<OpenCodeSdkResult>;
 }
 
 export interface OpenCodeCatalogClientLike {
@@ -116,10 +113,15 @@ function normalizeRootSessionRecord(raw: unknown): RootSessionRecord | null {
   return { id, title: readString(raw, 'title') ?? '', updatedAt, directory, projectId };
 }
 
-function unwrapSdkData(result: OpenCodeSdkResult, context: string): unknown | SessionCatalogError {
-  if (result.error !== undefined) return new SessionCatalogError(`${context} failed`);
+/**
+ * Unwraps the boundary payload. A transport failure (`error` result or absent
+ * `data`) returns `HostCallFailedError` — a boundary failure is never presented
+ * as the catalog's business failure.
+ */
+function unwrapSdkData(result: OpenCodeSdkResult, context: string): unknown | HostCallFailedError {
+  if (result.error !== undefined) return new HostCallFailedError(`${context} failed`);
   if (!('data' in result)) {
-    return new SessionCatalogError(`${context} returned no data`);
+    return new HostCallFailedError(`${context} returned no data`);
   }
   return result.data;
 }
@@ -174,123 +176,119 @@ export class SessionCatalog {
     this.childRootDirectories.clear();
   }
 
-  async list(): Promise<SessionCatalogResult | SessionCatalogError> {
-    try {
-      const projectResult = await this.client.project.list();
-      const projectData = unwrapSdkData(projectResult, 'OpenCode project list');
-      if (projectData instanceof SessionCatalogError) return projectData;
-      if (!Array.isArray(projectData)) {
-        return new SessionCatalogError('OpenCode project list data was not an array');
-      }
-      const projects: ProjectRecord[] = [];
-      const worktreeByProjectId = new Map<string, string>();
-      const buckets = new Map<string, ProjectBucket>();
-      for (const raw of projectData) {
-        const project = normalizeProjectRecord(raw);
-        if (project === null) continue;
-        projects.push(project);
-        worktreeByProjectId.set(project.id, project.worktree);
-        const key = buildProjectKey(project.id, null);
-        if (!buckets.has(key)) {
-          buckets.set(key, {
-            label: projectLabelOf(project.worktree),
-            newestUpdatedAt: null,
-            records: [],
-          });
-        }
-      }
-
-      const seenSessionIds = new Set<string>();
-      const childLinks: ChildSessionLink[] = [];
-      for (const project of projects) {
-        const sessionResult = await this.client.session.list({
-          query: { directory: project.worktree },
+  async list(): Promise<SessionCatalogResult | SessionCatalogError | HostCallFailedError> {
+    const projectResult = await this.client.project.list();
+    const projectData = unwrapSdkData(projectResult, 'OpenCode project list');
+    if (projectData instanceof HostCallFailedError) return projectData;
+    if (!Array.isArray(projectData)) {
+      return new HostCallFailedError('OpenCode project list data was not an array');
+    }
+    const projects: ProjectRecord[] = [];
+    const worktreeByProjectId = new Map<string, string>();
+    const buckets = new Map<string, ProjectBucket>();
+    for (const raw of projectData) {
+      const project = normalizeProjectRecord(raw);
+      if (project === null) continue;
+      projects.push(project);
+      worktreeByProjectId.set(project.id, project.worktree);
+      const key = buildProjectKey(project.id, null);
+      if (!buckets.has(key)) {
+        buckets.set(key, {
+          label: projectLabelOf(project.worktree),
+          newestUpdatedAt: null,
+          records: [],
         });
-        const sessionData = unwrapSdkData(sessionResult, 'OpenCode session list');
-        if (sessionData instanceof SessionCatalogError) return sessionData;
-        if (!Array.isArray(sessionData)) {
-          return new SessionCatalogError('OpenCode session list data was not an array');
-        }
-        for (const raw of sessionData) {
-          const child = normalizeChildLink(raw);
-          if (child !== null) childLinks.push(child);
-          const record = normalizeRootSessionRecord(raw);
-          if (record === null) continue;
-          if (seenSessionIds.has(record.id)) continue;
-          seenSessionIds.add(record.id);
-          const global = record.projectId === GLOBAL_PROJECT_ID;
-          const key = buildProjectKey(record.projectId, global ? record.directory : null);
-          const labelSource = global
-            ? record.directory
-            : worktreeByProjectId.get(record.projectId) ?? record.directory;
-          const label = projectLabelOf(labelSource);
-          const bucket = buckets.get(key);
-          if (bucket === undefined) {
-            buckets.set(key, { label, newestUpdatedAt: record.updatedAt, records: [record] });
-          } else {
-            if (bucket.newestUpdatedAt === null || record.updatedAt > bucket.newestUpdatedAt) {
-              bucket.newestUpdatedAt = record.updatedAt;
-            }
-            bucket.records.push(record);
+      }
+    }
+
+    const seenSessionIds = new Set<string>();
+    const childLinks: ChildSessionLink[] = [];
+    for (const project of projects) {
+      const sessionResult = await this.client.session.list({
+        query: { directory: project.worktree },
+      });
+      const sessionData = unwrapSdkData(sessionResult, 'OpenCode session list');
+      if (sessionData instanceof HostCallFailedError) return sessionData;
+      if (!Array.isArray(sessionData)) {
+        return new HostCallFailedError('OpenCode session list data was not an array');
+      }
+      for (const raw of sessionData) {
+        const child = normalizeChildLink(raw);
+        if (child !== null) childLinks.push(child);
+        const record = normalizeRootSessionRecord(raw);
+        if (record === null) continue;
+        if (seenSessionIds.has(record.id)) continue;
+        seenSessionIds.add(record.id);
+        const global = record.projectId === GLOBAL_PROJECT_ID;
+        const key = buildProjectKey(record.projectId, global ? record.directory : null);
+        const labelSource = global
+          ? record.directory
+          : worktreeByProjectId.get(record.projectId) ?? record.directory;
+        const label = projectLabelOf(labelSource);
+        const bucket = buckets.get(key);
+        if (bucket === undefined) {
+          buckets.set(key, { label, newestUpdatedAt: record.updatedAt, records: [record] });
+        } else {
+          if (bucket.newestUpdatedAt === null || record.updatedAt > bucket.newestUpdatedAt) {
+            bucket.newestUpdatedAt = record.updatedAt;
           }
+          bucket.records.push(record);
         }
       }
+    }
 
-      const orderedBuckets = [...buckets.entries()].sort(([leftKey, left], [rightKey, right]) => {
-        if (left.newestUpdatedAt === null && right.newestUpdatedAt !== null) return 1;
-        if (left.newestUpdatedAt !== null && right.newestUpdatedAt === null) return -1;
-        if (
-          left.newestUpdatedAt !== null &&
-          right.newestUpdatedAt !== null &&
-          right.newestUpdatedAt !== left.newestUpdatedAt
-        ) {
-          return right.newestUpdatedAt - left.newestUpdatedAt;
-        }
-        if (leftKey < rightKey) return -1;
-        if (leftKey > rightKey) return 1;
+    const orderedBuckets = [...buckets.entries()].sort(([leftKey, left], [rightKey, right]) => {
+      if (left.newestUpdatedAt === null && right.newestUpdatedAt !== null) return 1;
+      if (left.newestUpdatedAt !== null && right.newestUpdatedAt === null) return -1;
+      if (
+        left.newestUpdatedAt !== null &&
+        right.newestUpdatedAt !== null &&
+        right.newestUpdatedAt !== left.newestUpdatedAt
+      ) {
+        return right.newestUpdatedAt - left.newestUpdatedAt;
+      }
+      if (leftKey < rightKey) return -1;
+      if (leftKey > rightKey) return 1;
+      return 0;
+    });
+
+    const summaries: SessionCatalogSummary[] = [];
+    const catalogProjects: SessionCatalogProject[] = [];
+    const routes = new Map<string, string>();
+    for (const [key, bucket] of orderedBuckets) {
+      catalogProjects.push({ key, label: bucket.label });
+      bucket.records.sort((left, right) => {
+        if (right.updatedAt !== left.updatedAt) return right.updatedAt - left.updatedAt;
+        if (left.id < right.id) return -1;
+        if (left.id > right.id) return 1;
         return 0;
       });
-
-      const summaries: SessionCatalogSummary[] = [];
-      const catalogProjects: SessionCatalogProject[] = [];
-      const routes = new Map<string, string>();
-      for (const [key, bucket] of orderedBuckets) {
-        catalogProjects.push({ key, label: bucket.label });
-        bucket.records.sort((left, right) => {
-          if (right.updatedAt !== left.updatedAt) return right.updatedAt - left.updatedAt;
-          if (left.id < right.id) return -1;
-          if (left.id > right.id) return 1;
-          return 0;
+      for (const record of bucket.records) {
+        summaries.push({
+          id: record.id,
+          title: record.title,
+          updatedAt: record.updatedAt,
+          projectKey: key,
+          projectLabel: bucket.label,
         });
-        for (const record of bucket.records) {
-          summaries.push({
-            id: record.id,
-            title: record.title,
-            updatedAt: record.updatedAt,
-            projectKey: key,
-            projectLabel: bucket.label,
-          });
-          routes.set(record.id, record.directory);
-        }
+        routes.set(record.id, record.directory);
       }
-      const childRootDirectories = new Map<string, string>();
-      for (const child of childLinks) {
-        if (routes.has(child.id) || childRootDirectories.has(child.id)) continue;
-        const parentDirectory = routes.get(child.parentID);
-        if (parentDirectory === undefined) continue;
-        childRootDirectories.set(child.id, parentDirectory);
-      }
-      this.routes.clear();
-      for (const [sessionId, directory] of routes) {
-        this.routes.set(sessionId, directory);
-      }
-      this.childRootDirectories.clear();
-      for (const [sessionId, directory] of childRootDirectories) {
-        this.childRootDirectories.set(sessionId, directory);
-      }
-      return { projects: catalogProjects, sessions: summaries };
-    } catch {
-      return new SessionCatalogError('OpenCode catalog request failed');
     }
+    const childRootDirectories = new Map<string, string>();
+    for (const child of childLinks) {
+      if (routes.has(child.id) || childRootDirectories.has(child.id)) continue;
+      const parentDirectory = routes.get(child.parentID);
+      if (parentDirectory === undefined) continue;
+      childRootDirectories.set(child.id, parentDirectory);
+    }
+    this.routes.clear();
+    for (const [sessionId, directory] of routes) {
+      this.routes.set(sessionId, directory);
+    }
+    this.childRootDirectories.clear();
+    for (const [sessionId, directory] of childRootDirectories) {
+      this.childRootDirectories.set(sessionId, directory);
+    }
+    return { projects: catalogProjects, sessions: summaries };
   }
 }

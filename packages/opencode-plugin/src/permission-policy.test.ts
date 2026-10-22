@@ -8,11 +8,15 @@ import {
   toPermissionReplyBody,
 } from './allowlist';
 import type {
+  ModelLookupOptions,
   OpenCodeClientLike,
   OpenCodeSdkResult,
+  PermissionReplyOptions,
+  SessionContextOptions,
+  SessionInterruptOptions,
   SessionListOptions,
-  SessionMessagesOptions,
-  SessionStatusOptions,
+  SessionPromptOptions,
+  SessionSwitchModelOptions,
 } from './allowlist';
 
 function createClient() {
@@ -20,41 +24,55 @@ function createClient() {
     data: [],
     error: undefined,
   }));
-  const status = vi.fn(async (_options?: SessionStatusOptions): Promise<OpenCodeSdkResult> => ({
-    data: {},
-    error: undefined,
-  }));
-  const messages = vi.fn(async (_options: SessionMessagesOptions): Promise<OpenCodeSdkResult> => ({
+  const active = vi.fn(async (): Promise<OpenCodeSdkResult> => ({ data: {}, error: undefined }));
+  const context = vi.fn(async (_options: SessionContextOptions): Promise<OpenCodeSdkResult> => ({
     data: [],
     error: undefined,
   }));
-  const promptAsync = vi.fn(async (): Promise<OpenCodeSdkResult> => ({
+  const switchModel = vi.fn(
+    async (_options: SessionSwitchModelOptions): Promise<OpenCodeSdkResult> => ({
+      data: undefined,
+      error: undefined,
+    }),
+  );
+  const prompt = vi.fn(async (_options: SessionPromptOptions): Promise<OpenCodeSdkResult> => ({
     data: undefined,
     error: undefined,
   }));
-  const abort = vi.fn(async (): Promise<OpenCodeSdkResult> => ({ data: true, error: undefined }));
-  const postSessionIdPermissionsPermissionId = vi.fn(async (): Promise<OpenCodeSdkResult> => ({
+  const interrupt = vi.fn(async (_options: SessionInterruptOptions): Promise<OpenCodeSdkResult> => ({
     data: true,
     error: undefined,
   }));
+  const permissionReply = vi.fn(
+    async (_options: PermissionReplyOptions): Promise<OpenCodeSdkResult> => ({
+      data: true,
+      error: undefined,
+    }),
+  );
+  const modelList = vi.fn(async (_options?: ModelLookupOptions): Promise<OpenCodeSdkResult> => ({
+    data: [],
+    error: undefined,
+  }));
+  const modelDefault = vi.fn(async (_options?: ModelLookupOptions): Promise<OpenCodeSdkResult> => ({
+    data: null,
+    error: undefined,
+  }));
   const client: OpenCodeClientLike = {
-    session: { list, status, messages, promptAsync, abort },
-    provider: {
-      list: async () => ({ data: { providers: [], default: {} } }),
-    },
-    config: {
-      providers: async () => ({ data: { providers: [], default: {} } }),
-    },
-    postSessionIdPermissionsPermissionId,
+    session: { list, active, context, switchModel, prompt, interrupt },
+    model: { list: modelList, default: modelDefault },
+    permission: { reply: permissionReply },
   };
   return {
     client,
     list,
-    status,
-    messages,
-    promptAsync,
-    abort,
-    postSessionIdPermissionsPermissionId,
+    active,
+    context,
+    switchModel,
+    prompt,
+    interrupt,
+    permissionReply,
+    modelList,
+    modelDefault,
   };
 }
 
@@ -86,15 +104,15 @@ describe('permission policy', () => {
       expect(result).toBeInstanceOf(ActionError);
     }
 
-    expect(mocks.postSessionIdPermissionsPermissionId).not.toHaveBeenCalled();
+    expect(mocks.permissionReply).not.toHaveBeenCalled();
   });
 
-  it('exposes only the mobile-safe acknowledgement and sends the exact once or reject SDK body', async () => {
+  it('exposes only the mobile-safe acknowledgement and sends the exact once or reject decision', async () => {
     const decisions: PermissionDecision[] = ['once', 'reject'];
 
     for (const decision of decisions) {
       const mocks = createClient();
-      mocks.postSessionIdPermissionsPermissionId.mockResolvedValue({
+      mocks.permissionReply.mockResolvedValue({
         data: { path: { cwd: '/host/project', root: '/host' } },
         error: undefined,
       });
@@ -107,10 +125,11 @@ describe('permission policy', () => {
       });
 
       expect(result).toStrictEqual({ type: 'permission.reply', value: null });
-      expect(mocks.postSessionIdPermissionsPermissionId).toHaveBeenCalledTimes(1);
-      expect(mocks.postSessionIdPermissionsPermissionId).toHaveBeenCalledWith({
-        path: { id: 'session-1', permissionID: 'permission-1' },
-        body: { response: decision },
+      expect(mocks.permissionReply).toHaveBeenCalledTimes(1);
+      expect(mocks.permissionReply).toHaveBeenCalledWith({
+        sessionID: 'session-1',
+        requestID: 'permission-1',
+        decision,
       });
     }
   });
@@ -136,10 +155,11 @@ describe('permission policy', () => {
     }
 
     expect(mocks.list).not.toHaveBeenCalled();
-    expect(mocks.status).not.toHaveBeenCalled();
-    expect(mocks.messages).not.toHaveBeenCalled();
-    expect(mocks.promptAsync).not.toHaveBeenCalled();
-    expect(mocks.abort).not.toHaveBeenCalled();
-    expect(mocks.postSessionIdPermissionsPermissionId).not.toHaveBeenCalled();
+    expect(mocks.active).not.toHaveBeenCalled();
+    expect(mocks.context).not.toHaveBeenCalled();
+    expect(mocks.switchModel).not.toHaveBeenCalled();
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    expect(mocks.interrupt).not.toHaveBeenCalled();
+    expect(mocks.permissionReply).not.toHaveBeenCalled();
   });
 });
