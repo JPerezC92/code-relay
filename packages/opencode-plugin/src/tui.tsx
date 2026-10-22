@@ -1,9 +1,11 @@
 /**
- * CodeRelay TUI plugin. Registers the `coderelay-pairing` route and the
- * `CodeRelay: Pair device` palette command, and renders the pairing QR inside
- * a content-sized dialog as compact half-block text — never the ANSI QR string.
+ * CodeRelay CLI plugin (OpenCode V2). Registers the `coderelay-pairing` route
+ * and the `CodeRelay: Pair device` palette command, and renders the pairing QR
+ * inside a content-sized dialog as compact half-block text — never the ANSI QR
+ * string. OpenCode auto-loads this module through the package's `./tui` export.
  */
-import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from '@opencode-ai/plugin/tui';
+import { Plugin } from '@opencode/plugin/tui';
+import type { Context as CliPluginContext, KeymapCommand } from '@opencode/plugin/tui/context';
 import { jsx, type JSX } from '@opentui/solid/jsx-runtime';
 import { create as createQrCode } from 'qrcode';
 import { createSignal } from 'solid-js';
@@ -501,7 +503,7 @@ export interface PairingPayloadPollOptions {
  * `expired`, and `idle` their explicit statuses — each clears the payload and
  * QR and stops the poll — while a 409 whose state raced back to `waiting`
  * keeps the waiting display and continues polling. The returned function
- * cancels polling and is wired to dialog close and `api.lifecycle.onDispose`.
+ * cancels polling and is wired to dialog close and the plugin cleanup.
  */
 export function startPairingPayloadPolling(
   view: PairingView,
@@ -595,16 +597,19 @@ export function startPairingPayloadPolling(
 
 /** Palette command layer handed to the keymap through `PairingTuiHost`. */
 export interface PairingCommand {
-  namespace: string;
-  name: string;
+  /** Stable command id — `coderelay.pair`. */
+  id: string;
   title: string;
-  category: string;
+  /** Discovery group shown in the palette — `CodeRelay`. */
+  group: string;
+  palette: true;
   run: () => void | Promise<void>;
 }
 
- export interface PairingKeyBinding {
-  key: string;
-  cmd: () => void;
+/** Inline key handler; V2 carries these as id-less commands with a `bind`. */
+export interface PairingKeyBinding {
+  bind: string;
+  run: () => void;
 }
 
 export interface PairingCommandLayer {
@@ -612,62 +617,86 @@ export interface PairingCommandLayer {
   bindings: PairingKeyBinding[];
 }
 
-/**
- * Narrow port over `TuiPluginApi` so the pairing flow and its tests stay
- * deterministic: layer registration, the dialog, the route, terminal width,
- * and disposal are all injected through this interface.
- */
-export interface PairingTuiHost {
-  registerLayer: (layer: PairingCommandLayer) => () => void;
-  registerRoute: (name: string, render: () => string) => void;
-   dialogReplace: (render: () => string, onClose?: () => void) => void;
-  dialogClear: () => void;
-  dialogSetSize: (size: PairingDialogSize) => void;
-  navigate: (name: string) => void;
-  terminalWidth: () => number;
-  onDispose: (fn: () => void) => void;
+/** Named route whose render returns plain text for the pairing view. */
+export interface PairingRoute {
+  name: string;
+  render: () => string;
 }
 
 /**
- * Adapts the production TUI API onto `PairingTuiHost`. Dialog renders return
- * root OpenTUI text elements, and `dialog.replace` resets the size to medium,
- * so the flow calls `setSize` with the computed tier after replacing.
+ * Narrow port over the V2 `@opencode/plugin/tui` context so the pairing flow
+ * and its tests stay deterministic: layer registration, the dialog, the route,
+ * terminal width, and navigation are all injected through this interface.
  */
-export function createTuiHost(api: TuiPluginApi): PairingTuiHost {
+export interface PairingTuiHost {
+  /**
+   * Mirrors `context.keymap.layer`. V2 gives `layer` no unregister handle —
+   * the host drops the layer when the plugin deactivates — so the returned
+   * cleanup disables the layer's commands and bindings until that removal.
+   */
+  registerLayer: (layer: PairingCommandLayer) => () => void;
+  /** Mirrors `context.ui.router.register`; returns the unregister. */
+  registerRoute: (route: PairingRoute) => () => void;
+  /** Mirrors `context.ui.dialog.show`. */
+  dialogShow: (render: () => string, onClose?: () => void) => void;
+  /** Mirrors `context.ui.dialog.set`. */
+  dialogSet: (options: { size: PairingDialogSize }) => void;
+  /** Mirrors `context.ui.dialog.clear`. */
+  dialogClear: () => void;
+  /** Mirrors `context.ui.router.navigate` to one of this plugin's routes. */
+  navigate: (name: string) => void;
+  terminalWidth: () => number;
+}
+
+/**
+ * Adapts the V2 CLI plugin context onto `PairingTuiHost`. Dialog and route
+ * renders wrap in root OpenTUI text elements, key bindings become id-less
+ * keymap commands, and the dialog tier is applied with `dialog.set` after
+ * `dialog.show`.
+ */
+export function createTuiHost(context: CliPluginContext): PairingTuiHost {
   return {
-    registerLayer: (layer) =>
-      api.keymap.registerLayer({
-        commands: layer.commands.map((command) => ({
-          namespace: command.namespace,
-          name: command.name,
-          title: command.title,
-          category: command.category,
-          run: () => command.run(),
-        })),
-        bindings: layer.bindings.map((binding) => ({
-          key: binding.key,
-          cmd: binding.cmd,
-        })),
-      }),
-    registerRoute: (name, render) => {
-      api.route.register([{ name, render: () => renderPairingText(render()) }]);
+    registerLayer: (layer) => {
+      const [active, setActive] = createSignal(true);
+      const toCommand = (command: PairingCommand): KeymapCommand => ({
+        id: command.id,
+        title: command.title,
+        group: command.group,
+        palette: true,
+        run: () => command.run(),
+      });
+      const toBinding = (binding: PairingKeyBinding): KeymapCommand => ({
+        bind: binding.bind,
+        run: () => binding.run(),
+      });
+      context.keymap.layer(() => ({
+        mode: 'global',
+        enabled: () => active(),
+        commands: [...layer.commands.map(toCommand), ...layer.bindings.map(toBinding)],
+      }));
+      // `Keymap.layer` returns no unregister: the host removes the layer when
+      // the plugin deactivates. Disabling it eagerly empties its commands and
+      // bindings the moment the plugin cleanup runs.
+      return () => setActive(false);
     },
-     dialogReplace: (render, onClose) => {
-      api.ui.dialog.replace(() => renderPairingText(render()), onClose);
+    registerRoute: (route) =>
+      context.ui.router.register({
+        name: route.name,
+        render: () => renderPairingText(route.render()),
+      }),
+    dialogShow: (render, onClose) => {
+      context.ui.dialog.show(() => renderPairingText(render()), onClose);
+    },
+    dialogSet: (options) => {
+      context.ui.dialog.set({ size: options.size });
     },
     dialogClear: () => {
-      api.ui.dialog.clear();
-    },
-    dialogSetSize: (size) => {
-      api.ui.dialog.setSize(size);
+      context.ui.dialog.clear();
     },
     navigate: (name) => {
-      api.route.navigate(name);
+      context.ui.router.navigate({ type: 'plugin', name });
     },
-    terminalWidth: () => api.renderer.terminalWidth,
-    onDispose: (fn) => {
-      void api.lifecycle.onDispose(fn);
-    },
+    terminalWidth: () => context.renderer.terminalWidth,
   };
 }
 
@@ -682,16 +711,17 @@ export interface PairingTuiOptions {
 }
 
 /**
- * Wires the pairing TUI: the full-screen route, the initial bounded poll, the
- * `CodeRelay: Pair device` palette command, and lifecycle disposal. The
- * command renews the pairing, then opens the smallest dialog tier that fits
- * the QR — or, when no tier can show the matrix, navigates to the route.
- * Esc clears the dialog, stops polling, and drops the payload.
+ * Wires the pairing TUI: the full-screen route, the initial bounded poll, and
+ * the `CodeRelay: Pair device` palette command. The command renews the
+ * pairing, then opens the smallest dialog tier that fits the QR — or, when no
+ * tier can show the matrix, navigates to the route. Esc clears the dialog,
+ * stops polling, and drops the payload. Returns the cleanup that unregisters
+ * the route and keymap layer and stops the payload poll.
  */
 export async function startPairingTui(
   host: PairingTuiHost,
   options: PairingTuiOptions = {},
-): Promise<void> {
+): Promise<() => void> {
   const detect = options.detectEndpoints ?? detectEndpoints;
   const now = options.now ?? (() => new Date());
   const endpoints = await detect();
@@ -715,16 +745,19 @@ export async function startPairingTui(
     });
   };
 
-   host.registerRoute(PAIRING_ROUTE_NAME, () => view.render(now(), host.terminalWidth()));
+  const unregisterRoute = host.registerRoute({
+    name: PAIRING_ROUTE_NAME,
+    render: () => view.render(now(), host.terminalWidth()),
+  });
   restartPolling();
 
-  host.registerLayer({
+  const unregisterLayer = host.registerLayer({
     commands: [
       {
-        namespace: 'palette',
-        name: PAIRING_COMMAND_NAME,
+        id: PAIRING_COMMAND_NAME,
         title: PAIRING_COMMAND_TITLE,
-        category: PAIRING_COMMAND_CATEGORY,
+        group: PAIRING_COMMAND_CATEGORY,
+        palette: true,
         run: async () => {
           const payload = await renewPairingPayload({
             port: options.port,
@@ -743,7 +776,7 @@ export async function startPairingTui(
             restartPolling();
             return;
           }
-          host.dialogReplace(
+          host.dialogShow(
             () =>
               renderPairingDialogText(
                 view.state(),
@@ -752,15 +785,15 @@ export async function startPairingTui(
               ),
             () => stopAndClear(),
           );
-          host.dialogSetSize(size);
+          host.dialogSet({ size });
           restartPolling();
         },
       },
     ],
     bindings: [
       {
-        key: 'escape',
-        cmd: () => {
+        bind: 'escape',
+        run: () => {
           host.dialogClear();
           stopAndClear();
         },
@@ -768,15 +801,19 @@ export async function startPairingTui(
     ],
   });
 
-  host.onDispose(() => {
+  return () => {
+    unregisterLayer();
+    unregisterRoute();
     stopAndClear();
-  });
+  };
 }
 
-export const tui: TuiPlugin = async (api) => {
-  await startPairingTui(createTuiHost(api));
-};
-
-const coderelayTuiModule: TuiPluginModule = { id: 'coderelay', tui };
-
-export default coderelayTuiModule;
+/**
+ * V2 CLI plugin entry: OpenCode auto-loads it through the package's `./tui`
+ * export. The returned cleanup unregisters the route, disables the keymap
+ * layer, and stops the payload poll.
+ */
+export default Plugin.define({
+  id: 'coderelay.tui',
+  setup: (context) => startPairingTui(createTuiHost(context)),
+});

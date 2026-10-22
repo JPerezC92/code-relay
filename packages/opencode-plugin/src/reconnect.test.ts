@@ -51,8 +51,6 @@ function createClient(): { client: FakeClient; calls: { list: number; messages: 
       list: async () => ({
         data: [{ id: 'proj-default', worktree: DEFAULT_WORKTREE }],
         error: undefined,
-        request: {},
-        response: {},
       }),
     },
     session: {
@@ -73,40 +71,24 @@ function createClient(): { client: FakeClient; calls: { list: number; messages: 
                 ]
               : [],
           error: undefined,
-          request: {},
-          response: {},
         };
       },
-      status: async () => ({ data: {}, error: undefined, request: {}, response: {} }),
-      messages: async () => {
+      active: async () => ({ data: {}, error: undefined }),
+      context: async () => {
         calls.messages += 1;
-        return { data: [], error: undefined, request: {}, response: {} };
+        return { data: [], error: undefined };
       },
-      promptAsync: async () => ({ data: undefined, error: undefined, request: {}, response: {} }),
-      abort: async () => ({ data: true, error: undefined, request: {}, response: {} }),
+      switchModel: async () => ({ data: undefined, error: undefined }),
+      prompt: async () => ({ data: undefined, error: undefined }),
+      interrupt: async () => ({ data: true, error: undefined }),
     },
-    provider: {
-      list: async () => ({
-        data: { providers: [], default: {} },
-        error: undefined,
-        request: {},
-        response: {},
-      }),
+    model: {
+      list: async () => ({ data: [], error: undefined }),
+      default: async () => ({ data: null, error: undefined }),
     },
-    config: {
-      providers: async () => ({
-        data: { providers: [], default: {} },
-        error: undefined,
-        request: {},
-        response: {},
-      }),
+    permission: {
+      reply: async () => ({ data: true, error: undefined }),
     },
-    postSessionIdPermissionsPermissionId: async () => ({
-      data: true,
-      error: undefined,
-      request: {},
-      response: {},
-    }),
   };
   return { client, calls };
 }

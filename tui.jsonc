@@ -1,3 +1,0 @@
-{
-  "plugin": ["./packages/opencode-plugin/src/tui.tsx"]
-}

@@ -36,7 +36,17 @@
         // }
     },
     "plugins": [
-        "file:///home/dexm76/projects-personal/CodeRelay/packages/opencode-plugin/src/index.ts"
+        // A local plugin entry is a DIRECTORY, and the loader resolves `index.ts`
+        // at that directory's root. The package's `exports` map (". " -> "./src/index.ts")
+        // is consulted for package-name entries, not for a relative directory entry,
+        // and the package is not linked into root `node_modules`, so the directory
+        // must be the one that actually contains the entry. `src/` holds both
+        // `index.ts` and `tui.tsx`, which is the documented "export ./tui beside the
+        // main plugin" layout, so both the server plugin and the CLI plugin load here.
+        // Earlier forms that failed: a POSIX `file:///home/...` URL (Windows
+        // ERR_INVALID_FILE_URL_PATH), and `src/index.ts` as a file entry (the loader
+        // requires a directory).
+        "./packages/opencode-plugin/src"
     ],
   "agents": {
         "plan": {

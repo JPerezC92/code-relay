@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { Server } from 'node:http';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   PROTOCOL_VERSION,
   SESSION_KEY_LENGTH,
@@ -20,6 +20,7 @@ import type {
   PairingPayload,
   PairingRequest,
 } from '@coderelay/protocol';
+import * as allowlistModule from './allowlist';
 import type { OpenCodeClientLike, SessionListOptions } from './allowlist';
 import { createHostCrypto, createHostPairingCrypto, fromBase64, toBase64 } from './crypto';
 import type { HostPairingCrypto } from './crypto';
@@ -64,39 +65,23 @@ function createClient(): FakeClient {
       list: async () => ({
         data: [{ id: 'proj-default', worktree: '/home/dev/default' }],
         error: undefined,
-        request: {},
-        response: {},
       }),
     },
     session: {
-      list: async () => ({ data: [], error: undefined, request: {}, response: {} }),
-      status: async () => ({ data: {}, error: undefined, request: {}, response: {} }),
-      messages: async () => ({ data: [], error: undefined, request: {}, response: {} }),
-      promptAsync: async () => ({ data: undefined, error: undefined, request: {}, response: {} }),
-      abort: async () => ({ data: true, error: undefined, request: {}, response: {} }),
+      list: async () => ({ data: [], error: undefined }),
+      active: async () => ({ data: {}, error: undefined }),
+      context: async () => ({ data: [], error: undefined }),
+      switchModel: async () => ({ data: undefined, error: undefined }),
+      prompt: async () => ({ data: undefined, error: undefined }),
+      interrupt: async () => ({ data: true, error: undefined }),
     },
-    provider: {
-      list: async () => ({
-        data: { providers: [], default: {} },
-        error: undefined,
-        request: {},
-        response: {},
-      }),
+    model: {
+      list: async () => ({ data: [], error: undefined }),
+      default: async () => ({ data: null, error: undefined }),
     },
-    config: {
-      providers: async () => ({
-        data: { providers: [], default: {} },
-        error: undefined,
-        request: {},
-        response: {},
-      }),
+    permission: {
+      reply: async () => ({ data: true, error: undefined }),
     },
-    postSessionIdPermissionsPermissionId: async () => ({
-      data: true,
-      error: undefined,
-      request: {},
-      response: {},
-    }),
   };
 }
 
@@ -124,8 +109,6 @@ function installAlphaProject(
   client.project.list = async () => ({
     data: [{ id: 'proj-alpha', worktree: ALPHA_WORKTREE }],
     error: undefined,
-    request: {},
-    response: {},
   });
   client.session.list = async (options?: SessionListOptions) => {
     sessionListCalls += 1;
@@ -133,8 +116,6 @@ function installAlphaProject(
     return {
       data: directory === ALPHA_WORKTREE ? sessions : [],
       error: undefined,
-      request: {},
-      response: {},
     };
   };
   return { sessionListCalls: () => sessionListCalls };
@@ -560,8 +541,6 @@ describe('CodeRelayGateway', () => {
         { id: 'proj-beta', worktree: BETA_WORKTREE },
       ],
       error: undefined,
-      request: {},
-      response: {},
     });
     const gateway = createGateway({ pairing, client, serverFactory: http.factory });
     const listening = gateway.listen();
@@ -656,9 +635,9 @@ describe('CodeRelayGateway', () => {
       },
     ]);
     let messagesCalls = 0;
-    client.session.messages = async () => {
+    client.session.context = async () => {
       messagesCalls += 1;
-      return { data: [], error: undefined, request: {}, response: {} };
+      return { data: [], error: undefined };
     };
     const gateway = createGateway({ pairing, client });
     const crypto = createHostPairingCrypto();
@@ -675,6 +654,101 @@ describe('CodeRelayGateway', () => {
     if (result.kind === 'error') expect(result.error.message).toBe('Unknown session');
     expect(calls.sessionListCalls()).toBe(1);
     expect(messagesCalls).toBe(0);
+  });
+
+  it('rejects an unknown session id before dispatch and never reaches executeAllowedAction', async () => {
+    const pairing = new PairingManager({ now: () => TEST_NOW });
+    const client = createClient();
+    const calls = installAlphaProject(client, [
+      {
+        id: 'ses-root-1',
+        projectID: 'proj-alpha',
+        directory: ALPHA_WORKTREE,
+        time: { updated: 400 },
+        title: 'Root one',
+      },
+    ]);
+    const hostCalls = {
+      active: 0,
+      context: 0,
+      switchModel: 0,
+      prompt: 0,
+      interrupt: 0,
+      reply: 0,
+      modelList: 0,
+      modelDefault: 0,
+    };
+    client.session.active = async () => {
+      hostCalls.active += 1;
+      return { data: {}, error: undefined };
+    };
+    client.session.context = async () => {
+      hostCalls.context += 1;
+      return { data: [], error: undefined };
+    };
+    client.session.switchModel = async () => {
+      hostCalls.switchModel += 1;
+      return { data: undefined, error: undefined };
+    };
+    client.session.prompt = async () => {
+      hostCalls.prompt += 1;
+      return { data: undefined, error: undefined };
+    };
+    client.session.interrupt = async () => {
+      hostCalls.interrupt += 1;
+      return { data: true, error: undefined };
+    };
+    client.permission.reply = async () => {
+      hostCalls.reply += 1;
+      return { data: true, error: undefined };
+    };
+    client.model.list = async () => {
+      hostCalls.modelList += 1;
+      return { data: [], error: undefined };
+    };
+    client.model.default = async () => {
+      hostCalls.modelDefault += 1;
+      return { data: null, error: undefined };
+    };
+    const gateway = createGateway({ pairing, client });
+    const crypto = createHostPairingCrypto();
+    const { sessionKey, pairingId } = await pairGateway(gateway, pairing, crypto);
+    const executeSpy = vi.spyOn(allowlistModule, 'executeAllowedAction');
+
+    for (const [sequence, action] of [
+      [0, { type: 'session.status', sessionID: 'ses-missing' }],
+      [1, { type: 'session.abort', sessionID: 'ses-missing' }],
+      [
+        2,
+        {
+          type: 'permission.reply',
+          sessionID: 'ses-missing',
+          permissionID: 'permission-1',
+          decision: 'once',
+        },
+      ],
+    ] as const) {
+      const result = await gateway.handleEnvelope(
+        JSON.stringify(await encryptAction(crypto, sessionKey, pairingId, sequence, action)),
+      );
+      expect(result.kind).toBe('error');
+      if (result.kind === 'error') expect(result.error.message).toBe('Unknown session');
+    }
+
+    const executeCalls = executeSpy.mock.calls.length;
+    executeSpy.mockRestore();
+    expect(executeCalls).toBe(0);
+    expect(hostCalls).toStrictEqual({
+      active: 0,
+      context: 0,
+      switchModel: 0,
+      prompt: 0,
+      interrupt: 0,
+      reply: 0,
+      modelList: 0,
+      modelDefault: 0,
+    });
+    expect(calls.sessionListCalls()).toBe(3);
   });
 
   it('reads a child session through the parent root directory without routing the child', async () => {
@@ -699,9 +773,9 @@ describe('CodeRelayGateway', () => {
     ]);
     const catalog = new SessionCatalog(client);
     const messagesOptions: unknown[] = [];
-    client.session.messages = async (options) => {
+    client.session.context = async (options) => {
       messagesOptions.push(options);
-      return { data: [], error: undefined, request: {}, response: {} };
+      return { data: [], error: undefined };
     };
     const gateway = createGateway({ pairing, client, catalog });
     const crypto = createHostPairingCrypto();
@@ -719,15 +793,13 @@ describe('CodeRelayGateway', () => {
     expect(catalog.lookup('ses-child-1')).toBeNull();
     expect(catalog.lookupChildRootDirectory('ses-child-1')).toBe(ALPHA_WORKTREE);
     expect(catalog.lookup('ses-root-1')).toBe(ALPHA_WORKTREE);
-    expect(messagesOptions).toStrictEqual([
-      { path: { id: 'ses-child-1' }, query: { directory: ALPHA_WORKTREE } },
-    ]);
+    expect(messagesOptions).toStrictEqual([{ sessionID: 'ses-child-1' }]);
     const serialized = JSON.stringify(result);
     expect(serialized).not.toContain(childDirectory);
     expect(serialized).not.toContain(ALPHA_WORKTREE);
   });
 
-  it('refreshes the route map once on a miss and executes with the host-derived directory', async () => {
+  it('refreshes the route map once on a miss and executes the routed action', async () => {
     const pairing = new PairingManager({ now: () => TEST_NOW });
     const client = createClient();
     const calls = installAlphaProject(client, [
@@ -740,9 +812,9 @@ describe('CodeRelayGateway', () => {
       },
     ]);
     const messagesOptions: unknown[] = [];
-    client.session.messages = async (options) => {
+    client.session.context = async (options) => {
       messagesOptions.push(options);
-      return { data: [], error: undefined, request: {}, response: {} };
+      return { data: [], error: undefined };
     };
     const gateway = createGateway({ pairing, client });
     const crypto = createHostPairingCrypto();
@@ -759,9 +831,7 @@ describe('CodeRelayGateway', () => {
     expect(first.kind).toBe('action');
     if (first.kind === 'action') expect(first.result.type).toBe('session.messages');
     expect(calls.sessionListCalls()).toBe(1);
-    expect(messagesOptions).toStrictEqual([
-      { path: { id: 'ses-root-1' }, query: { directory: ALPHA_SESSION_DIRECTORY } },
-    ]);
+    expect(messagesOptions).toStrictEqual([{ sessionID: 'ses-root-1' }]);
 
     const second = await gateway.handleEnvelope(
       JSON.stringify(
@@ -789,29 +859,23 @@ describe('CodeRelayGateway', () => {
         title: 'Root one',
       },
     ]);
-    client.session.messages = async () => ({
+    client.session.context = async () => ({
       data: [
         {
-          info: {
-            id: 'message-1',
-            sessionID: 'ses-root-1',
-            role: 'assistant',
-            path: { cwd: '/host/project', root: '/host' },
-            metadata: { private: true },
-            projectID: 'proj-secret',
-            directory: '/host/project',
-          },
-          parts: [
+          id: 'message-1',
+          type: 'assistant',
+          sessionID: 'ses-root-1',
+          path: { cwd: '/host/project', root: '/host' },
+          metadata: { private: true },
+          projectID: 'proj-secret',
+          directory: '/host/project',
+          content: [
             { type: 'text', text: 'Safe reply', metadata: { private: true } },
             { type: 'tool', path: { cwd: '/host/project', root: '/host' } },
           ],
-          path: { cwd: '/host/project', root: '/host' },
-          metadata: { private: true },
         },
       ],
       error: undefined,
-      request: {},
-      response: {},
     });
     const gateway = createGateway({ pairing, client, serverFactory: http.factory });
     const listening = gateway.listen();
@@ -932,10 +996,10 @@ describe('CodeRelayGateway', () => {
     }
   });
 
-  it('returns the catalog failure message from an encrypted session.list', async () => {
+  it('reports the catalog transport failure as a host-call failure from an encrypted session.list', async () => {
     const pairing = new PairingManager({ now: () => TEST_NOW });
     const client = createClient();
-    client.project.list = async () => ({ data: undefined, error: {}, request: {}, response: {} });
+    client.project.list = async () => ({ data: undefined, error: {} });
     const gateway = createGateway({ pairing, client });
     const crypto = createHostPairingCrypto();
     const { sessionKey, pairingId } = await pairGateway(gateway, pairing, crypto);
@@ -944,7 +1008,111 @@ describe('CodeRelayGateway', () => {
     );
     expect(result.kind).toBe('error');
     if (result.kind === 'error') {
-      expect(result.error.message).toBe('OpenCode project list failed');
+      expect(result.error.message).toBe('Host call failed: OpenCode project list failed');
+    }
+  });
+
+  it('reports a host-call transport failure as such and never as a denial', async () => {
+    const pairing = new PairingManager({ now: () => TEST_NOW });
+    const client = createClient();
+    installAlphaProject(client, [
+      {
+        id: 'ses-root-1',
+        projectID: 'proj-alpha',
+        directory: ALPHA_WORKTREE,
+        time: { updated: 400 },
+        title: 'Root one',
+      },
+    ]);
+    client.session.interrupt = async () => ({
+      data: undefined,
+      error: { message: 'transport down' },
+    });
+    const gateway = createGateway({ pairing, client });
+    const crypto = createHostPairingCrypto();
+    const { sessionKey, pairingId } = await pairGateway(gateway, pairing, crypto);
+    const result = await gateway.handleEnvelope(
+      JSON.stringify(
+        await encryptAction(crypto, sessionKey, pairingId, 0, {
+          type: 'session.abort',
+          sessionID: 'ses-root-1',
+        }),
+      ),
+    );
+    expect(result.kind).toBe('error');
+    if (result.kind === 'error') {
+      expect(result.error.message).toBe('Host call failed: OpenCode SDK request failed');
+      expect(result.error.message).not.toContain('Denied');
+    }
+  });
+
+  it('reports a payload-shape contract violation as a host-call failure and never as a denial', async () => {
+    const pairing = new PairingManager({ now: () => TEST_NOW });
+    const client = createClient();
+    installAlphaProject(client, [
+      {
+        id: 'ses-root-1',
+        projectID: 'proj-alpha',
+        directory: ALPHA_WORKTREE,
+        time: { updated: 400 },
+        title: 'Root one',
+      },
+    ]);
+    client.session.context = async () => ({
+      data: { not: 'an array' },
+      error: undefined,
+    });
+    const gateway = createGateway({ pairing, client });
+    const crypto = createHostPairingCrypto();
+    const { sessionKey, pairingId } = await pairGateway(gateway, pairing, crypto);
+    const result = await gateway.handleEnvelope(
+      JSON.stringify(
+        await encryptAction(crypto, sessionKey, pairingId, 0, {
+          type: 'session.messages',
+          sessionID: 'ses-root-1',
+        }),
+      ),
+    );
+    expect(result.kind).toBe('error');
+    if (result.kind === 'error') {
+      expect(result.error.message).toBe('Host call failed: OpenCode session messages result must be an array');
+      expect(result.error.message).not.toContain('Denied');
+    }
+  });
+
+  it('reports a policy denial verbatim, never framed as a host-call failure', async () => {
+    const pairing = new PairingManager({ now: () => TEST_NOW });
+    const client = createClient();
+    installAlphaProject(client, [
+      {
+        id: 'ses-root-1',
+        projectID: 'proj-alpha',
+        directory: ALPHA_WORKTREE,
+        time: { updated: 400 },
+        title: 'Root one',
+      },
+    ]);
+    const gateway = createGateway({ pairing, client });
+    const crypto = createHostPairingCrypto();
+    const { sessionKey, pairingId } = await pairGateway(gateway, pairing, crypto);
+    const executeSpy = vi.spyOn(allowlistModule, 'executeAllowedAction');
+    executeSpy.mockResolvedValue(new allowlistModule.AllowlistError('Denied SDK method: rpc.call'));
+    try {
+      const result = await gateway.handleEnvelope(
+        JSON.stringify(
+          await encryptAction(crypto, sessionKey, pairingId, 0, {
+            type: 'session.abort',
+            sessionID: 'ses-root-1',
+          }),
+        ),
+      );
+      expect(result.kind).toBe('error');
+      if (result.kind === 'error') {
+        expect(result.error.message).toBe('Denied SDK method: rpc.call');
+        expect(result.error.message).not.toContain('Host call failed');
+      }
+    } finally {
+      executeSpy.mockRestore();
     }
   });
 
@@ -1065,7 +1233,7 @@ describe('CodeRelayGateway', () => {
     let executed = 0;
     client.session.list = async () => {
       executed += 1;
-      return { data: [], error: undefined, request: {}, response: {} };
+      return { data: [], error: undefined };
     };
     const gateway = createGateway({ pairing, client });
     const crypto = createHostPairingCrypto();
@@ -1105,7 +1273,7 @@ describe('CodeRelayGateway', () => {
     let executed = 0;
     client.session.list = async () => {
       executed += 1;
-      return { data: [], error: undefined, request: {}, response: {} };
+      return { data: [], error: undefined };
     };
     const gateway = createGateway({ pairing, client, crypto });
     const deviceCrypto = createHostPairingCrypto();
@@ -1131,7 +1299,7 @@ describe('CodeRelayGateway', () => {
     let executed = 0;
     client.session.list = async () => {
       executed += 1;
-      return { data: [], error: undefined, request: {}, response: {} };
+      return { data: [], error: undefined };
     };
     const gateway = createGateway({ pairing, client, crypto });
     const deviceCrypto = createHostPairingCrypto();

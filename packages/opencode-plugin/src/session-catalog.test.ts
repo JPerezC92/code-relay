@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
+import { HostCallFailedError } from './allowlist';
 import { SessionCatalog, SessionCatalogError } from './session-catalog';
 import type {
   OpenCodeCatalogClientLike,
@@ -47,41 +48,36 @@ function createCatalogHarness(
   const projectList = vi.fn(async () => ({
     data: projectData,
     error: undefined,
-    request: {},
-    response: {},
   }));
   const sessionList = vi.fn(async (options?: SessionListOptions) => {
     const directory = options?.query?.directory;
     const sessions = directory !== undefined ? (sessionsByDirectory[directory] ?? []) : [];
-    return { data: sessions, error: undefined, request: {}, response: {} };
+    return { data: sessions, error: undefined };
   });
-  const status = vi.fn(async () => ({ data: {}, error: undefined, request: {}, response: {} }));
-  const messages = vi.fn(async () => ({ data: [], error: undefined, request: {}, response: {} }));
-  const promptAsync = vi.fn(async () => ({
-    data: undefined,
-    error: undefined,
-    request: {},
-    response: {},
-  }));
-  const abort = vi.fn(async () => ({ data: true, error: undefined, request: {}, response: {} }));
+  const active = vi.fn(async () => ({ data: {}, error: undefined }));
+  const context = vi.fn(async () => ({ data: [], error: undefined }));
+  const switchModel = vi.fn(async () => ({ data: undefined, error: undefined }));
+  const prompt = vi.fn(async () => ({ data: undefined, error: undefined }));
+  const interrupt = vi.fn(async () => ({ data: true, error: undefined }));
   const client: OpenCodeCatalogClientLike = {
     project: { list: projectList },
-    session: { list: sessionList, status, messages, promptAsync, abort },
+    session: { list: sessionList, active, context, switchModel, prompt, interrupt },
   };
   return { client, projectList, sessionList, catalog: new SessionCatalog(client) };
 }
 
 function expectSummaries(
-  result: SessionCatalogResult | SessionCatalogError,
+  result: SessionCatalogResult | SessionCatalogError | HostCallFailedError,
 ): SessionCatalogSummary[] {
   return expectCatalog(result).sessions;
 }
 
 function expectCatalog(
-  result: SessionCatalogResult | SessionCatalogError,
+  result: SessionCatalogResult | SessionCatalogError | HostCallFailedError,
 ): SessionCatalogResult {
   expect(result).not.toBeInstanceOf(SessionCatalogError);
-  if (result instanceof SessionCatalogError) {
+  expect(result).not.toBeInstanceOf(HostCallFailedError);
+  if (result instanceof SessionCatalogError || result instanceof HostCallFailedError) {
     throw new Error(`expected catalog result, received: ${result.message}`);
   }
   return result;
@@ -562,90 +558,90 @@ describe('session-catalog', () => {
     expect(harness.sessionList).toHaveBeenCalledTimes(1);
   });
 
-  it('returns SessionCatalogError for SDK errors and missing or non-array data', async () => {
+  it('returns HostCallFailedError for SDK transport errors and missing data', async () => {
     const harness = createCatalogHarness([], {});
 
     harness.client.project.list = async () => ({
       data: undefined,
       error: { message: 'SDK failed' },
-      request: {},
-      response: {},
     });
     const projectError = await harness.catalog.list();
-    expect(projectError).toBeInstanceOf(SessionCatalogError);
-    if (projectError instanceof SessionCatalogError) {
+    expect(projectError).toBeInstanceOf(HostCallFailedError);
+    expect(projectError).not.toBeInstanceOf(SessionCatalogError);
+    if (projectError instanceof HostCallFailedError) {
       expect(projectError.message).toBe('OpenCode project list failed');
     }
 
-    harness.client.project.list = async () => ({ error: undefined, request: {}, response: {} });
+    harness.client.project.list = async () => ({ error: undefined });
     const projectMissing = await harness.catalog.list();
-    expect(projectMissing).toBeInstanceOf(SessionCatalogError);
-    if (projectMissing instanceof SessionCatalogError) {
+    expect(projectMissing).toBeInstanceOf(HostCallFailedError);
+    expect(projectMissing).not.toBeInstanceOf(SessionCatalogError);
+    if (projectMissing instanceof HostCallFailedError) {
       expect(projectMissing.message).toBe('OpenCode project list returned no data');
     }
 
     harness.client.project.list = async () => ({
+      data: [{ id: 'proj-alpha', worktree: ALPHA_WORKTREE }],
+      error: undefined,
+    });
+    harness.client.session.list = async () => ({
+      data: undefined,
+      error: { message: 'SDK failed' },
+    });
+    const sessionError = await harness.catalog.list();
+    expect(sessionError).toBeInstanceOf(HostCallFailedError);
+    expect(sessionError).not.toBeInstanceOf(SessionCatalogError);
+    if (sessionError instanceof HostCallFailedError) {
+      expect(sessionError.message).toBe('OpenCode session list failed');
+    }
+
+    harness.client.session.list = async () => ({ error: undefined });
+    const sessionMissing = await harness.catalog.list();
+    expect(sessionMissing).toBeInstanceOf(HostCallFailedError);
+    expect(sessionMissing).not.toBeInstanceOf(SessionCatalogError);
+    if (sessionMissing instanceof HostCallFailedError) {
+      expect(sessionMissing.message).toBe('OpenCode session list returned no data');
+    }
+  });
+
+  it('returns HostCallFailedError when a catalog payload is not an array', async () => {
+    const harness = createCatalogHarness([], {});
+
+    harness.client.project.list = async () => ({
       data: { not: 'an array' },
       error: undefined,
-      request: {},
-      response: {},
     });
     const projectShape = await harness.catalog.list();
-    expect(projectShape).toBeInstanceOf(SessionCatalogError);
-    if (projectShape instanceof SessionCatalogError) {
+    expect(projectShape).toBeInstanceOf(HostCallFailedError);
+    expect(projectShape).not.toBeInstanceOf(SessionCatalogError);
+    if (projectShape instanceof HostCallFailedError) {
       expect(projectShape.message).toBe('OpenCode project list data was not an array');
     }
 
     harness.client.project.list = async () => ({
       data: [{ id: 'proj-alpha', worktree: ALPHA_WORKTREE }],
       error: undefined,
-      request: {},
-      response: {},
     });
-    harness.client.session.list = async () => ({
-      data: undefined,
-      error: { message: 'SDK failed' },
-      request: {},
-      response: {},
-    });
-    const sessionError = await harness.catalog.list();
-    expect(sessionError).toBeInstanceOf(SessionCatalogError);
-    if (sessionError instanceof SessionCatalogError) {
-      expect(sessionError.message).toBe('OpenCode session list failed');
-    }
-
-    harness.client.session.list = async () => ({ error: undefined, request: {}, response: {} });
-    const sessionMissing = await harness.catalog.list();
-    expect(sessionMissing).toBeInstanceOf(SessionCatalogError);
-    if (sessionMissing instanceof SessionCatalogError) {
-      expect(sessionMissing.message).toBe('OpenCode session list returned no data');
-    }
-
     harness.client.session.list = async () => ({
       data: { not: 'an array' },
       error: undefined,
-      request: {},
-      response: {},
     });
     const sessionShape = await harness.catalog.list();
-    expect(sessionShape).toBeInstanceOf(SessionCatalogError);
-    if (sessionShape instanceof SessionCatalogError) {
+    expect(sessionShape).toBeInstanceOf(HostCallFailedError);
+    expect(sessionShape).not.toBeInstanceOf(SessionCatalogError);
+    if (sessionShape instanceof HostCallFailedError) {
       expect(sessionShape.message).toBe('OpenCode session list data was not an array');
     }
   });
 
-  it('wraps thrown SDK exceptions instead of rejecting', async () => {
+  it('propagates thrown SDK exceptions instead of wrapping them as catalog errors', async () => {
     const harness = createCatalogHarness([], {});
+    const thrown = new Error('network down');
     harness.client.project.list = async () => {
-      throw new Error('network down');
+      throw thrown;
     };
 
-    const result = await harness.catalog.list();
-
-    expect(result).toBeInstanceOf(SessionCatalogError);
-    if (result instanceof SessionCatalogError) {
-      expect(result.message).toBe('OpenCode catalog request failed');
-    }
+    await expect(harness.catalog.list()).rejects.toBe(thrown);
   });
 
   it('starts with an empty route map and populates it on the first refresh', async () => {
@@ -724,12 +720,10 @@ describe('session-catalog', () => {
     harness.client.session.list = async () => ({
       data: undefined,
       error: { message: 'SDK failed' },
-      request: {},
-      response: {},
     });
     const failed = await harness.catalog.list();
 
-    expect(failed).toBeInstanceOf(SessionCatalogError);
+    expect(failed).toBeInstanceOf(HostCallFailedError);
     expect(harness.catalog.lookup('ses-a1')).toBe(ALPHA_WORKTREE);
     expect(harness.catalog.count()).toBe(1);
   });

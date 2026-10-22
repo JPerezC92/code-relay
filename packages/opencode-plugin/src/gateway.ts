@@ -21,7 +21,12 @@ import type {
   PairingCompleteResponse,
   PairingPayload,
 } from '@coderelay/protocol';
-import { AllowlistError, executeAllowedAction, projectActivityPart } from './allowlist';
+import {
+  AllowlistError,
+  HostCallFailedError,
+  executeAllowedAction,
+  projectActivityPart,
+} from './allowlist';
 import type { AllowedActionResult, OpenCodeClientLike } from './allowlist';
 import { createHostCrypto, fromBase64, toBase64 } from './crypto';
 import { DEFAULT_GATEWAY_PORT } from './endpoints';
@@ -303,6 +308,15 @@ function envelopeError(message: string): EnvelopeHandling {
   return { kind: 'error', error: new GatewayError(message) };
 }
 
+/**
+ * Delivery-edge framing for the boundary-failure channel: a host-call/transport
+ * failure reports as such, never as a policy denial. Policy (`AllowlistError`)
+ * and business (`SessionCatalogError`) failures pass through unchanged.
+ */
+function hostCallFailure(error: HostCallFailedError): GatewayError {
+  return new GatewayError(`Host call failed: ${error.message}`);
+}
+
 export class CodeRelayGateway {
   readonly port: number;
   private readonly client: OpenCodeClientLike;
@@ -487,6 +501,7 @@ export class CodeRelayGateway {
     if (catalog === undefined) return new GatewayError('Session catalog is not available');
     if (action.type === 'session.list') {
       const summaries = await catalog.list();
+      if (summaries instanceof HostCallFailedError) return hostCallFailure(summaries);
       if (summaries instanceof SessionCatalogError) {
         return new GatewayError(summaries.message);
       }
@@ -494,12 +509,14 @@ export class CodeRelayGateway {
     }
     if (action.type === 'model.list') {
       const executed = await executeAllowedAction(this.client, action);
+      if (executed instanceof HostCallFailedError) return hostCallFailure(executed);
       if (executed instanceof AllowlistError) return new GatewayError(executed.message);
       return executed;
     }
     const directory = await this.resolveSessionDirectory(catalog, action.sessionID);
     if (directory instanceof GatewayError) return directory;
     const executed = await executeAllowedAction(this.client, action, directory);
+    if (executed instanceof HostCallFailedError) return hostCallFailure(executed);
     if (executed instanceof AllowlistError) return new GatewayError(executed.message);
     return executed;
   }
@@ -511,6 +528,7 @@ export class CodeRelayGateway {
     const cached = catalog.lookup(sessionId) ?? catalog.lookupChildRootDirectory(sessionId);
     if (cached !== null) return cached;
     const refreshed = await catalog.list();
+    if (refreshed instanceof HostCallFailedError) return hostCallFailure(refreshed);
     if (refreshed instanceof SessionCatalogError) return new GatewayError(refreshed.message);
     const routed = catalog.lookup(sessionId) ?? catalog.lookupChildRootDirectory(sessionId);
     if (routed === null) return new GatewayError('Unknown session');
